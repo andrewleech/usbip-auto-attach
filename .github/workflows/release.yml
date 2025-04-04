@@ -1,0 +1,71 @@
+\
+# SPDX-FileCopyrightText: 2025 The Anon Kode Authors
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Run only on tags like v1.0.0, v1.2.3
+
+jobs:
+  build_and_release:
+    name: Build and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local Docker image
+        run: docker build -t auto-attach-builder .
+        working-directory: .
+
+      - name: Create build output directories
+        run: mkdir -p ${{ github.workspace }}/output/x64 ${{ github.workspace }}/output/arm64
+
+      - name: Compile executables using Docker
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/output:/build_output \
+            auto-attach-builder \
+            make -C /app all OUT_DIR=/build_output
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |-
+            Static MUSL builds of the auto-attach utility.
+            - `auto-attach-amd64`: Linux x86_64
+            - `auto-attach-arm64`: Linux ARM64
+          draft: false
+          prerelease: false
+
+      - name: Upload amd64 Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} 
+          asset_path: ${{ github.workspace }}/output/x64/auto-attach
+          asset_name: auto-attach-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload arm64 Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ github.workspace }}/output/arm64/auto-attach
+          asset_name: auto-attach-arm64
+          asset_content_type: application/octet-stream
