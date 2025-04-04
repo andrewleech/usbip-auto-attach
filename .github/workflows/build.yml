@@ -1,0 +1,58 @@
+\
+# SPDX-FileCopyrightText: 2025 The Anon Kode Authors
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Build Executables
+
+on:
+  push:
+    branches:
+      - '**' # Run on pushes to any branch
+    tags-ignore:
+      - 'v*.*.*' # Don't run on tags, release workflow handles that
+  pull_request:
+    branches:
+      - '**' # Run on pull requests targeting any branch
+
+jobs:
+  build:
+    name: Build static executables
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local Docker image
+        run: docker build -t auto-attach-builder .
+        working-directory: . # Dockerfile is in the root
+
+      - name: Create build output directories on host
+        # Create directories relative to the GITHUB_WORKSPACE
+        run: mkdir -p ${{ github.workspace }}/output/x64 ${{ github.workspace }}/output/arm64
+
+      - name: Compile executables using Docker
+        # Mount the created output dir to /build_output inside container
+        # Run make inside the container's /app dir, telling it to use the mounted dir
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/output:/build_output \
+            auto-attach-builder \
+            make -C /app all OUT_DIR=/build_output
+
+      - name: Upload amd64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-attach-amd64
+          path: ${{ github.workspace }}/output/x64/auto-attach
+          if-no-files-found: error # Fail if artifact is missing
+
+      - name: Upload arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-attach-arm64
+          path: ${{ github.workspace }}/output/arm64/auto-attach
+          if-no-files-found: error # Fail if artifact is missing
