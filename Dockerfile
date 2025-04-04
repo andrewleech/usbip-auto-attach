@@ -23,13 +23,13 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Set working directory
 WORKDIR /app
 
-# Copy source code into the image
-COPY src/ ./src/
-COPY Makefile ./
+# Source code and Makefile will be mounted into /app during build
 
-# Build the executables using the Makefile
-# This command will be run when building the final application images or by CI
-# RUN make all
+# Set working directory where source will be mounted
+WORKDIR /app
+
+# Build command can be run via docker run, assuming source is mounted to /app
+# Example: docker run --rm -v $(pwd):/app -v $(pwd)/../output:/build_output auto-attach-builder make all OUT_DIR=/build_output
 
 # Optional: Create a smaller final image if needed, copying only the executables
 # FROM scratch
