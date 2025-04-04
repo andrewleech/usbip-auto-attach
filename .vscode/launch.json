@@ -1,0 +1,39 @@
+\
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug auto-attach (amd64)",
+            "type": "cppdbg",
+            "request": "launch",
+            // Resolved by Make Tools extension
+            // Assumes the "Build amd64 (MUSL)" task has been run
+            "program": "/workspaces/output/x64/auto-attach",
+            "args": [
+                // Example arguments: Replace with actual host IP and bus ID for testing
+                "172.19.112.1", 
+                "1-2",
+                "--verbose"
+                //"--usbip-path", "/usr/sbin/usbip" // Optional: if usbip isn't in default PATH
+            ],
+            "stopAtEntry": false,
+            "cwd": "/app", // Workspace folder inside the container
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // This preLaunchTask must match the label of the build task in tasks.json
+            "preLaunchTask": "Build amd64 (MUSL)", 
+            // Points to the correct source code location within the container
+            "sourceFileMap": {
+                "/app": "${workspaceFolder}"
+            }
+        }
+    ]
+}
