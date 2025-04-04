@@ -29,10 +29,10 @@ The easiest way to build the static MUSL executables for `linux/amd64` and `linu
 
     ```bash
     # On Linux/macOS
-    docker run --rm -v "$(pwd)/..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
+    docker run --rm -v "$(pwd):/app" -v "$(pwd)/..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
 
     # On Windows (Command Prompt/PowerShell) - Use %cd% for current directory
-    # docker run --rm -v "%cd%\..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
+    # docker run --rm -v "%cd%:/app" -v "%cd%\..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
     ```
     *   `--rm`: Removes the container after it exits.
     *   `-v "$(pwd)/..:/build_output"` (or `"%cd%\..:/build_output"`): Mounts the parent directory of your project into `/build_output` in the container.

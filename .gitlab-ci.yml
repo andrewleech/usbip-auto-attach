@@ -40,14 +40,18 @@ build_docker_image:
   stage: compile
   image: $BUILDER_IMAGE # Use the image built in the previous stage
   variables:
+    # Source code is mounted via config below, so no need to copy
     # Override OUT_DIR in Makefile to place builds inside the defined output directory
     MAKE_OUT_DIR: $BUILD_OUTPUT_DIR
-  script:
-    # Ensure the output directory exists within the CI job workspace
+  # Mount the project directory (containing src and Makefile) to /app in the container
+  # Mount the designated output directory to /build_output
+  before_script:
     - mkdir -p $MAKE_OUT_DIR/x64 $MAKE_OUT_DIR/arm64
-    # Run the make command for the specific target.
-    # We pass OUT_DIR to make to ensure it outputs to the correct path for artifact collection.
-    # The source code is already in /app within the $BUILDER_IMAGE.
+    # The docker runner mounts the source automatically, need to specify the workdir
+    - export DOCKER_VOLUMES="$CI_PROJECT_DIR:/app:rw,$MAKE_OUT_DIR:/build_output:rw"
+  script:
+    # Run the make command for the specific target inside /app
+    # We pass OUT_DIR to make to ensure it outputs to the correct mounted path.
     - make -C /app $MAKE_TARGET OUT_DIR=$MAKE_OUT_DIR
   artifacts:
     paths:
