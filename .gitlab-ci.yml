@@ -1,0 +1,76 @@
+\
+# SPDX-FileCopyrightText: 2025 The Anon Kode Authors
+# SPDX-License-Identifier: GPL-3.0-only
+
+variables:
+  # Define the image name using GitLab predefined variables
+  # This image will be stored in the project's container registry
+  BUILDER_IMAGE: $CI_REGISTRY_IMAGE/auto-attach-builder:$CI_COMMIT_SHA
+  # Define output directory relative to CI_PROJECT_DIR for artifacts
+  BUILD_OUTPUT_DIR: $CI_PROJECT_DIR/build_output
+
+stages:
+  - build_image
+  - compile
+
+# Job to build the Docker image used for compilation
+build_docker_image:
+  stage: build_image
+  image: docker:20.10.16 # Use a Docker-in-Docker capable image
+  services:
+    - docker:20.10.16-dind # Start the Docker daemon service
+  variables:
+    # Speed up Docker builds with layer caching
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs" # Required for Docker-in-Docker
+  before_script:
+    # Log in to the GitLab Container Registry
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+  script:
+    # Build the Dockerfile located in the current directory (.)
+    - docker build -t $BUILDER_IMAGE .
+    # Push the built image to the GitLab Container Registry
+    - docker push $BUILDER_IMAGE
+  rules:
+    # Run this job only when changes are pushed to the repository
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+# Base job definition for compilation tasks to reduce repetition
+.compile_base:
+  stage: compile
+  image: $BUILDER_IMAGE # Use the image built in the previous stage
+  variables:
+    # Override OUT_DIR in Makefile to place builds inside the defined output directory
+    MAKE_OUT_DIR: $BUILD_OUTPUT_DIR
+  script:
+    # Ensure the output directory exists within the CI job workspace
+    - mkdir -p $MAKE_OUT_DIR/x64 $MAKE_OUT_DIR/arm64
+    # Run the make command for the specific target.
+    # We pass OUT_DIR to make to ensure it outputs to the correct path for artifact collection.
+    # The source code is already in /app within the $BUILDER_IMAGE.
+    - make -C /app $MAKE_TARGET OUT_DIR=$MAKE_OUT_DIR
+  artifacts:
+    paths:
+      # Collect artifacts from the specified output path
+      - $ARTIFACT_PATH
+    expire_in: 1 week # Keep artifacts for 1 week
+  needs:
+    - job: build_docker_image # Ensure docker image is built first
+      artifacts: false # Don't download artifacts from the build_docker_image job
+  rules:
+    # Run this job only when changes are pushed to the repository
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+# Job to compile the amd64 executable
+compile_amd64:
+  extends: .compile_base
+  variables:
+    MAKE_TARGET: $(TARGET_AMD64) # Corresponds to ../x64/auto-attach target in Makefile
+    ARTIFACT_PATH: $BUILD_OUTPUT_DIR/x64/auto-attach # Path to the artifact to save
+
+# Job to compile the arm64 executable
+compile_arm64:
+  extends: .compile_base
+  variables:
+    MAKE_TARGET: $(TARGET_ARM64) # Corresponds to ../arm64/auto-attach target in Makefile
+    ARTIFACT_PATH: $BUILD_OUTPUT_DIR/arm64/auto-attach # Path to the artifact to save
