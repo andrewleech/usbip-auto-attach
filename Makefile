@@ -3,13 +3,13 @@
 
 # Use MUSL-based cross-compilers for static linking
 # Assumes compilers like x86_64-linux-musl-g++ and aarch64-linux-musl-g++ are in the PATH
-# (These are provided by the Dockerfile or need to be installed manually)
+# (These are provided by the Dockerfile which downloads them)
 CXX_AMD64 ?= x86_64-linux-musl-g++
 CXX_ARM64 ?= aarch64-linux-musl-g++
 
 # Common flags for static linking with MUSL and optimization
 # The -static flag is crucial for MUSL linking. Boost libraries are linked statically by default when found.
-# Ensure Boost development headers/static libs for MUSL are available in the build environment.
+# Ensure Boost development headers are available (installed via apt in Dockerfile).
 COMMON_FLAGS = -std=c++17 -static -Os -Wall -Wextra -pthread -lboost_program_options -lboost_system -lboost_process
 
 # Target specific flags (can add target-specific optimizations if needed)
