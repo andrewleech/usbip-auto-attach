@@ -1,0 +1,79 @@
+\
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build amd64 (MUSL)",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "OUT_DIR=/workspaces/output", // Use mounted output directory
+                "$(TARGET_AMD64)" // Build specific target
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Builds the amd64 static MUSL executable using the Makefile.",
+            // Run this task inside the dev container
+            "options": {
+                "cwd": "/app"
+            }
+        },
+        {
+            "label": "Build arm64 (MUSL)",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "OUT_DIR=/workspaces/output", // Use mounted output directory
+                "$(TARGET_ARM64)" // Build specific target
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Builds the arm64 static MUSL executable using the Makefile.",
+            // Run this task inside the dev container
+            "options": {
+                "cwd": "/app"
+            }
+        },
+        {
+            "label": "Build All (MUSL)",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "OUT_DIR=/workspaces/output", // Use mounted output directory
+                "all"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Builds both amd64 and arm64 static MUSL executables.",
+            // Run this task inside the dev container
+            "options": {
+                "cwd": "/app"
+            }
+        },
+        {
+            "label": "Clean Build Artifacts",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "OUT_DIR=/workspaces/output", // Use mounted output directory
+                "clean"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "Cleans the build output directory.",
+            // Run this task inside the dev container
+            "options": {
+                "cwd": "/app"
+            }
+        }
+    ]
+}
