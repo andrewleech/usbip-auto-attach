@@ -1,16 +1,19 @@
 # Use a Debian-based image with build tools
-FROM debian:bullseye-slim AS builder
+FROM debian:bullseye AS builder
 
 ENV MUSL_VERSION=1.2.3
 ENV MUSL_ARCH_AMD64=x86_64-linux-musl
 ENV MUSL_ARCH_ARM64=aarch64-linux-musl
 ENV CROSS_PREFIX=/opt/cross
 
+# Update package lists first
+RUN apt-get update
+
 # Install prerequisites
 # - build-essential: Basic build tools
 # - wget, xz-utils: For downloading and extracting toolchains
-# - libboost-*-dev: Boost development headers (linking handled by MUSL toolchain)
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+# - Boost libraries (program_options, system, process headers+static libs?)
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     xz-utils \
@@ -24,7 +27,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Download and extract MUSL cross-compilers
 RUN mkdir -p ${CROSS_PREFIX} \
     && cd /tmp \
-    && WGET_OPTS="--progress=dot:mega -nv"
+    && WGET_OPTS="--progress=dot:mega -nv" \
     && echo "Downloading MUSL toolchain for ${MUSL_ARCH_AMD64}..." \
     && wget ${WGET_OPTS} https://musl.cc/${MUSL_ARCH_AMD64}-cross.tgz \
     && echo "Downloading MUSL toolchain for ${MUSL_ARCH_ARM64}..." \
