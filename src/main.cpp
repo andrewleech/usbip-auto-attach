@@ -11,15 +11,19 @@
 #include <cstring>
 #include <csignal>
 #include <optional>
-#include <sstream> // Required for std::stringstream
-#include <algorithm> // Required for std::find_if_not, isspace
+#include <sstream>
+#include <algorithm>
+#include <regex>
 
 // Include the generated version header
 #include "version.h"
 
-// Function to trim leading whitespace
-std::string& ltrim(std::string& s) {
+// Function to trim leading/trailing whitespace
+std::string& trim(std::string& s) {
+    // Trim leading space
     s.erase(s.begin(), std::find_if_not(s.begin(), s.end(), ::isspace));
+    // Trim trailing space
+    s.erase(std::find_if_not(s.rbegin(), s.rend(), ::isspace).base(), s.end());
     return s;
 }
 
@@ -82,16 +86,18 @@ std::string run_command(const std::vector<std::string>& args, bool verbose = fal
 }
 
 // Function to check if the device is attached
-bool is_device_attached(const std::string& host_ip, const std::string& busid, const std::string& usbip_path, bool verbose) {
+bool is_device_attached(const std::string& /*host_ip*/, const std::string& busid, const std::string& usbip_path, bool verbose) {
     std::vector<std::string> args = {usbip_path, "port"};
     try {
         std::string output = run_command(args, verbose);
-        // Check if a line contains the busid followed by ":" - assumes `usbip port` output format
         std::stringstream ss(output);
         std::string line;
-        std::string search_str = "busid " + busid + " "; // Look for "busid 7-4 " or similar
+        // Regex to match the bus ID pattern like "<busid> -> ..." or similar, ignoring surrounding text
+        // It looks for lines containing something like: ": busid 7-4, devid ..."
+        std::regex busid_regex(".*busid +" + busid + "[,\s].*");
+
         while (std::getline(ss, line)) {
-            if (line.find(search_str) != std::string::npos) {
+            if (std::regex_search(line, busid_regex)) {
                  if (verbose) std::cerr << "Found attached busid in usbip port output." << std::endl;
                 return true;
             }
@@ -115,7 +121,7 @@ bool is_device_available(const std::string& host_ip, const std::string& busid, c
         std::string search_prefix = busid + ":"; // Look for "7-4:" etc.
 
         while (std::getline(ss, line)) {
-            std::string trimmed_line = ltrim(line);
+            std::string trimmed_line = trim(line);
             if (trimmed_line.rfind(search_prefix, 0) == 0) { // Check if line starts with prefix
                 if (verbose) std::cerr << "Found available busid in usbip list output." << std::endl;
                 return true;
@@ -137,7 +143,7 @@ bool attach_device(const std::string& host_ip, const std::string& busid, const s
         run_command(args, verbose); // Output is usually minimal on success
         // We might need a short delay and re-check, as attach can take time
         std::this_thread::sleep_for(std::chrono::seconds(2));
-        return is_device_attached(host_ip, busid, usbip_path, verbose);
+        return is_device_attached("", busid, usbip_path, verbose); // Host IP not needed for is_attached
     } catch (const std::exception& e) {
         if (verbose) {
             std::cerr << "Error attaching device: " << e.what() << std::endl;
