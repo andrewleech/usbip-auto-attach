@@ -16,14 +16,20 @@ RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-fr
 RUN apt-get update
 
 # Install prerequisites
-# No boost needed anymore
+# Need git and python3-pip for git-versioner
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     xz-utils \
     ca-certificates \
+    git \
+    python3 \
+    python3-pip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install git-versioner
+RUN pip3 install --break-system-packages git-versioner
 
 # Download and extract MUSL cross-compilers
 RUN mkdir -p ${CROSS_PREFIX} \
@@ -38,8 +44,8 @@ RUN mkdir -p ${CROSS_PREFIX} \
     && tar -xzf ${MUSL_ARCH_ARM64}-cross.tgz -C ${CROSS_PREFIX} --strip-components=1 \
     && rm -f ${MUSL_ARCH_AMD64}-cross.tgz ${MUSL_ARCH_ARM64}-cross.tgz
 
-# Add cross-compiler bin directories to PATH
-ENV PATH=${CROSS_PREFIX}/bin:${PATH}
+# Add cross-compiler bin directories AND Python user bin to PATH
+ENV PATH=/root/.local/bin:${CROSS_PREFIX}/bin:${PATH}
 
 # Set working directory (will be overridden by docker run -w)
 WORKDIR /app
