@@ -15,22 +15,23 @@ jobs:
 
     steps:
       - name: Checkout code
+        # Need full history for git-versioner
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Build local Docker image
-        run: docker build -t auto-attach-builder .
-
-      # No need to create output directory, Makefile does it
+        run: docker build -t usbip-auto-attach-builder .
 
       - name: Compile executables using Docker
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:${{ github.workspace }} \
             -w ${{ github.workspace }} \
-            auto-attach-builder \
+            usbip-auto-attach-builder \
             make all
 
       - name: Create Release
@@ -42,9 +43,9 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
           body: |-
-            Static MUSL builds of the auto-attach utility.
-            - `auto-attach-amd64`: Linux x86_64
-            - `auto-attach-arm64`: Linux ARM64
+            Static MUSL builds of the usbip-auto-attach utility.
+            - `usbip-auto-attach-amd64`: Linux x86_64
+            - `usbip-auto-attach-arm64`: Linux ARM64
           draft: false
           prerelease: false
 
@@ -54,8 +55,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ github.workspace }}/build/x64/auto-attach # Updated path
-          asset_name: auto-attach-amd64
+          asset_path: ${{ github.workspace }}/build/x64/usbip-auto-attach
+          asset_name: usbip-auto-attach-amd64
           asset_content_type: application/octet-stream
           if-no-files-found: error
 
@@ -65,7 +66,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ github.workspace }}/build/arm64/auto-attach # Updated path
-          asset_name: auto-attach-arm64
+          asset_path: ${{ github.workspace }}/build/arm64/usbip-auto-attach
+          asset_name: usbip-auto-attach-arm64
           asset_content_type: application/octet-stream
           if-no-files-found: error

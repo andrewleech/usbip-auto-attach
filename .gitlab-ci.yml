@@ -2,43 +2,43 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 variables:
-  # Define the image name using GitLab predefined variables
-  BUILDER_IMAGE: $CI_REGISTRY_IMAGE/auto-attach-builder:$CI_COMMIT_SHA
-  # Define build output directory relative to CI_PROJECT_DIR
-  BUILD_OUTPUT_DIR: $CI_PROJECT_DIR/build # Output within the project dir
+  BUILDER_IMAGE: $CI_REGISTRY_IMAGE/usbip-auto-attach-builder:$CI_COMMIT_SHA
+  BUILD_OUTPUT_DIR: $CI_PROJECT_DIR/build
 
 stages:
   - build_image
   - compile
 
-# Job to build the Docker image used for compilation
 build_docker_image:
   stage: build_image
-  image: docker:20.10.16 # Use a Docker-in-Docker capable image
+  image: docker:20.10.16
   services:
-    - docker:20.10.16-dind # Start the Docker daemon service
+    - docker:20.10.16-dind
   variables:
     DOCKER_DRIVER: overlay2
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
-    - docker build -t $BUILDER_IMAGE .
+    # Build image, passing GIT_COMMIT_SHA to get version info inside build
+    - docker build --build-arg CI_COMMIT_SHA=$CI_COMMIT_SHA -t $BUILDER_IMAGE .
     - docker push $BUILDER_IMAGE
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
 
-# Base job definition for compilation tasks
 .compile_base:
   stage: compile
   image: $BUILDER_IMAGE
-  # Use script block to run commands inside the container
-  # GitLab Docker runner automatically mounts the project dir
   script:
-    # Ensure the output directory exists within the CI job workspace
-    # Makefile will create ./build/x64 and ./build/arm64
-    # Working directory is automatically set to $CI_PROJECT_DIR
-    - make $MAKE_TARGET # Makefile uses default OUT_DIR=./build
+    # Need to ensure .git exists for git-versioner
+    # Ideally, the builder image stage would handle this better
+    # For now, initialize a dummy repo and fetch the required commit
+    - git init
+    - git remote add origin $CI_REPOSITORY_URL
+    - git fetch origin $CI_COMMIT_SHA
+    - git checkout $CI_COMMIT_SHA
+    # Run make, relies on automatic mount and workdir set by GitLab runner
+    - make $MAKE_TARGET
   artifacts:
     paths:
       - $ARTIFACT_PATH
@@ -49,16 +49,14 @@ build_docker_image:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
 
-# Job to compile the amd64 executable
 compile_amd64:
   extends: .compile_base
   variables:
-    MAKE_TARGET: $(TARGET_AMD64) # build/x64/auto-attach
-    ARTIFACT_PATH: build/x64/auto-attach # Path relative to $CI_PROJECT_DIR
+    MAKE_TARGET: $(TARGET_AMD64)
+    ARTIFACT_PATH: build/x64/usbip-auto-attach
 
-# Job to compile the arm64 executable
 compile_arm64:
   extends: .compile_base
   variables:
-    MAKE_TARGET: $(TARGET_ARM64) # build/arm64/auto-attach
-    ARTIFACT_PATH: build/arm64/auto-attach # Path relative to $CI_PROJECT_DIR
+    MAKE_TARGET: $(TARGET_ARM64)
+    ARTIFACT_PATH: build/arm64/usbip-auto-attach
