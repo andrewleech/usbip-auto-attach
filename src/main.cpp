@@ -11,9 +11,17 @@
 #include <cstring>
 #include <csignal>
 #include <optional>
+#include <sstream> // Required for std::stringstream
+#include <algorithm> // Required for std::find_if_not, isspace
 
 // Include the generated version header
 #include "version.h"
+
+// Function to trim leading whitespace
+std::string& ltrim(std::string& s) {
+    s.erase(s.begin(), std::find_if_not(s.begin(), s.end(), ::isspace));
+    return s;
+}
 
 // Function to run a command and capture its output
 std::string run_command(const std::vector<std::string>& args, bool verbose = false) {
@@ -59,11 +67,10 @@ std::string run_command(const std::vector<std::string>& args, bool verbose = fal
             int exit_code = WEXITSTATUS(status);
             if (exit_code != 0 && verbose) {
                 std::cerr << "Command exited with status " << exit_code << std::endl;
-                std::cerr << "Command output:\n" << result << std::endl;
+                // Don't print full output here if it includes usbip errors we expect sometimes
             }
         } else if (WIFSIGNALED(status) && verbose) {
             std::cerr << "Command killed by signal " << WTERMSIG(status) << std::endl;
-             std::cerr << "Command output:\n" << result << std::endl;
         }
     }
 
@@ -79,8 +86,17 @@ bool is_device_attached(const std::string& host_ip, const std::string& busid, co
     std::vector<std::string> args = {usbip_path, "port"};
     try {
         std::string output = run_command(args, verbose);
-        // A simple check: look for the busid in the output
-        return output.find(busid) != std::string::npos;
+        // Check if a line contains the busid followed by ":" - assumes `usbip port` output format
+        std::stringstream ss(output);
+        std::string line;
+        std::string search_str = "busid " + busid + " "; // Look for "busid 7-4 " or similar
+        while (std::getline(ss, line)) {
+            if (line.find(search_str) != std::string::npos) {
+                 if (verbose) std::cerr << "Found attached busid in usbip port output." << std::endl;
+                return true;
+            }
+        }
+        return false;
     } catch (const std::exception& e) {
         if (verbose) {
             std::cerr << "Error checking device attachment: " << e.what() << std::endl;
@@ -94,9 +110,18 @@ bool is_device_available(const std::string& host_ip, const std::string& busid, c
     std::vector<std::string> args = {usbip_path, "list", "-r", host_ip};
     try {
         std::string output = run_command(args, verbose);
-        // Look for the specific busid line
-        std::string search_str = busid + " :";
-        return output.find(search_str) != std::string::npos;
+        std::stringstream ss(output);
+        std::string line;
+        std::string search_prefix = busid + ":"; // Look for "7-4:" etc.
+
+        while (std::getline(ss, line)) {
+            std::string trimmed_line = ltrim(line);
+            if (trimmed_line.rfind(search_prefix, 0) == 0) { // Check if line starts with prefix
+                if (verbose) std::cerr << "Found available busid in usbip list output." << std::endl;
+                return true;
+            }
+        }
+        return false; // Not found
     } catch (const std::exception& e) {
         if (verbose) {
             std::cerr << "Error checking device availability: " << e.what() << std::endl;
