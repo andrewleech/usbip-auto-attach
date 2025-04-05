@@ -1,13 +1,11 @@
-\
 # SPDX-FileCopyrightText: 2025 The Anon Kode Authors
 # SPDX-License-Identifier: GPL-3.0-only
 
 variables:
   # Define the image name using GitLab predefined variables
-  # This image will be stored in the project's container registry
   BUILDER_IMAGE: $CI_REGISTRY_IMAGE/auto-attach-builder:$CI_COMMIT_SHA
-  # Define output directory relative to CI_PROJECT_DIR for artifacts
-  BUILD_OUTPUT_DIR: $CI_PROJECT_DIR/build_output
+  # Define build output directory relative to CI_PROJECT_DIR
+  BUILD_OUTPUT_DIR: $CI_PROJECT_DIR/build # Output within the project dir
 
 stages:
   - build_image
@@ -20,61 +18,47 @@ build_docker_image:
   services:
     - docker:20.10.16-dind # Start the Docker daemon service
   variables:
-    # Speed up Docker builds with layer caching
     DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: "/certs" # Required for Docker-in-Docker
+    DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    # Log in to the GitLab Container Registry
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
   script:
-    # Build the Dockerfile located in the current directory (.)
     - docker build -t $BUILDER_IMAGE .
-    # Push the built image to the GitLab Container Registry
     - docker push $BUILDER_IMAGE
   rules:
-    # Run this job only when changes are pushed to the repository
     - if: '$CI_PIPELINE_SOURCE == "push"'
 
-# Base job definition for compilation tasks to reduce repetition
+# Base job definition for compilation tasks
 .compile_base:
   stage: compile
-  image: $BUILDER_IMAGE # Use the image built in the previous stage
-  variables:
-    # Source code is mounted via config below, so no need to copy
-    # Override OUT_DIR in Makefile to place builds inside the defined output directory
-    MAKE_OUT_DIR: $BUILD_OUTPUT_DIR
-  # Mount the project directory (containing src and Makefile) to /app in the container
-  # Mount the designated output directory to /build_output
-  before_script:
-    - mkdir -p $MAKE_OUT_DIR/x64 $MAKE_OUT_DIR/arm64
-    # The docker runner mounts the source automatically, need to specify the workdir
-    - export DOCKER_VOLUMES="$CI_PROJECT_DIR:/app:rw,$MAKE_OUT_DIR:/build_output:rw"
+  image: $BUILDER_IMAGE
+  # Use script block to run commands inside the container
+  # GitLab Docker runner automatically mounts the project dir
   script:
-    # Run the make command for the specific target inside /app
-    # We pass OUT_DIR to make to ensure it outputs to the correct mounted path.
-    - make -C /app $MAKE_TARGET OUT_DIR=$MAKE_OUT_DIR
+    # Ensure the output directory exists within the CI job workspace
+    # Makefile will create ./build/x64 and ./build/arm64
+    # Working directory is automatically set to $CI_PROJECT_DIR
+    - make $MAKE_TARGET # Makefile uses default OUT_DIR=./build
   artifacts:
     paths:
-      # Collect artifacts from the specified output path
       - $ARTIFACT_PATH
-    expire_in: 1 week # Keep artifacts for 1 week
+    expire_in: 1 week
   needs:
-    - job: build_docker_image # Ensure docker image is built first
-      artifacts: false # Don't download artifacts from the build_docker_image job
+    - job: build_docker_image
+      artifacts: false
   rules:
-    # Run this job only when changes are pushed to the repository
     - if: '$CI_PIPELINE_SOURCE == "push"'
 
 # Job to compile the amd64 executable
 compile_amd64:
   extends: .compile_base
   variables:
-    MAKE_TARGET: $(TARGET_AMD64) # Corresponds to ../x64/auto-attach target in Makefile
-    ARTIFACT_PATH: $BUILD_OUTPUT_DIR/x64/auto-attach # Path to the artifact to save
+    MAKE_TARGET: $(TARGET_AMD64) # build/x64/auto-attach
+    ARTIFACT_PATH: build/x64/auto-attach # Path relative to $CI_PROJECT_DIR
 
 # Job to compile the arm64 executable
 compile_arm64:
   extends: .compile_base
   variables:
-    MAKE_TARGET: $(TARGET_ARM64) # Corresponds to ../arm64/auto-attach target in Makefile
-    ARTIFACT_PATH: $BUILD_OUTPUT_DIR/arm64/auto-attach # Path to the artifact to save
+    MAKE_TARGET: $(TARGET_ARM64) # build/arm64/auto-attach
+    ARTIFACT_PATH: build/arm64/auto-attach # Path relative to $CI_PROJECT_DIR

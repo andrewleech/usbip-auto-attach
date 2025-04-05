@@ -1,25 +1,26 @@
 # Use a Debian-based image with build tools
-FROM debian:bullseye AS builder
+FROM debian:bookworm AS builder
 
 ENV MUSL_VERSION=1.2.3
 ENV MUSL_ARCH_AMD64=x86_64-linux-musl
 ENV MUSL_ARCH_ARM64=aarch64-linux-musl
 ENV CROSS_PREFIX=/opt/cross
 
+# Ensure main contrib non-free are potentially available
+# Using Bookworm sources
+RUN echo "deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian-security/ bookworm-security main contrib non-free non-free-firmware" >> /etc/apt/sources.list
+
 # Update package lists first
 RUN apt-get update
 
 # Install prerequisites
-# - build-essential: Basic build tools
-# - wget, xz-utils: For downloading and extracting toolchains
-# - Boost libraries (program_options, system, process headers+static libs?)
+# No boost needed anymore
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     xz-utils \
-    libboost-program-options-dev \
-    libboost-system-dev \
-    libboost-process-dev \
     ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -40,11 +41,8 @@ RUN mkdir -p ${CROSS_PREFIX} \
 # Add cross-compiler bin directories to PATH
 ENV PATH=${CROSS_PREFIX}/bin:${PATH}
 
-# Set working directory where source will be mounted
+# Set working directory (will be overridden by docker run -w)
 WORKDIR /app
 
-# Build command can be run via docker run, assuming source is mounted to /app
-# Example: docker run --rm -v $(pwd):/app -v $(pwd)/../output:/build_output <image_name> make all OUT_DIR=/build_output
-
-# Optional: Verify compilers are found
+# Optional: Verify compilers
 # RUN which x86_64-linux-musl-g++ && which aarch64-linux-musl-g++

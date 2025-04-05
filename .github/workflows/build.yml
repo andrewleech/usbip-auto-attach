@@ -6,12 +6,12 @@ name: Build Executables
 on:
   push:
     branches:
-      - '**' # Run on pushes to any branch
+      - '**'
     tags-ignore:
-      - 'v*.*.*' # Don't run on tags, release workflow handles that
+      - 'v*.*.*'
   pull_request:
     branches:
-      - '**' # Run on pull requests targeting any branch
+      - '**'
 
 jobs:
   build:
@@ -26,31 +26,29 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build local Docker image
-        # Build using the Dockerfile in the root directory
         run: docker build -t auto-attach-builder .
 
-      - name: Create build output directories on host
-        run: mkdir -p ${{ github.workspace }}/output/x64 ${{ github.workspace }}/output/arm64
+      # No need to create output directory, Makefile does it
 
       - name: Compile executables using Docker
-        # Mount current dir (workspace) to /app, output dir to /build_output
+        # Mount workspace to same path, set working dir, run make
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -v ${{ github.workspace }}/output:/build_output \
+            -v ${{ github.workspace }}:${{ github.workspace }} \
+            -w ${{ github.workspace }} \
             auto-attach-builder \
-            make -C /app all OUT_DIR=/build_output
+            make all
 
       - name: Upload amd64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: auto-attach-amd64
-          path: ${{ github.workspace }}/output/x64/auto-attach
+          path: ${{ github.workspace }}/build/x64/auto-attach # Updated path
           if-no-files-found: error
 
       - name: Upload arm64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: auto-attach-arm64
-          path: ${{ github.workspace }}/output/arm64/auto-attach
+          path: ${{ github.workspace }}/build/arm64/auto-attach # Updated path
           if-no-files-found: error

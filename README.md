@@ -29,19 +29,20 @@ The easiest way to build the static MUSL executables for `linux/amd64` and `linu
 
     ```bash
     # On Linux/macOS
-    docker run --rm -v "$(pwd):/app" -v "$(pwd)/..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
+    docker run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" auto-attach-builder make all
 
     # On Windows (Command Prompt/PowerShell) - Use %cd% for current directory
-    # docker run --rm -v "%cd%:/app" -v "%cd%\..:/build_output" auto-attach-builder make -C /app all OUT_DIR=/build_output
+    # docker run --rm -v "%cd%:%cd%" -w "%cd%" auto-attach-builder make all
     ```
     *   `--rm`: Removes the container after it exits.
-    *   `-v "$(pwd)/..:/build_output"` (or `"%cd%\..:/build_output"`): Mounts the parent directory of your project into `/build_output` in the container.
+    *   `-v "$(pwd):$(pwd)"`: Mounts the current host directory (containing source and Makefile) to the same path inside the container.
+    *   `-w "$(pwd)"`: Sets the working directory inside the container to the mounted project directory.
     *   `auto-attach-builder`: The name of the Docker image built in the previous step.
-    *   `make -C /app all OUT_DIR=/build_output`: Runs make inside the container's `/app` directory (where the source code is) and overrides the `OUT_DIR` Makefile variable to point to the mounted volume, ensuring output goes to your host machine's parent directory.
+    *   `make all`: Runs the default make target to build both executables. The Makefile outputs to `./build` relative to the working directory.
 
     After this command completes, you will find the static executables:
-    *   `../x64/auto-attach` (for amd64)
-    *   `../arm64/auto-attach` (for arm64)
+    *   `./build/x64/auto-attach` (for amd64)
+    *   `./build/arm64/auto-attach` (for arm64)
 
 ## Building (Manual - Requires MUSL Toolchain)
 
@@ -66,18 +67,19 @@ If you prefer not to use Docker, you can build manually, but you **must** have M
     make all
     ```
     This uses the `Makefile` directly, which is configured to use the MUSL compilers (`x86_64-linux-musl-g++` and `aarch64-linux-musl-g++`). It will create the static executables in the parent directory:
-    *   `../x64/auto-attach`
-    *   `../arm64/auto-attach`
+    *   `./build/x64/auto-attach`
+    *   `./build/arm64/auto-attach`
 
 ## Usage
 
 The command-line arguments are straightforward:
 
 ```
-<path_to_executable>/auto-attach <host_ip> <busid> [--usbip-path <path_to_usbip>] [-v|--verbose]
+./build/x64/auto-attach <host_ip> <busid> [--usbip-path <path_to_usbip>] [-v|--verbose]
+# or
+./build/arm64/auto-attach <host_ip> <busid> [--usbip-path <path_to_usbip>] [-v|--verbose]
 ```
 
-*   `<path_to_executable>`: Either `../x64/auto-attach` or `../arm64/auto-attach` depending on your architecture.
 *   `<host_ip>`: IP address of the Windows host running `usbipd-win`.
 *   `<busid>`: Bus ID of the USB device to monitor and attach (e.g., `1-2`). You can find this using `usbip list -r <host_ip>` *before* attaching the device for the first time.
 *   `--usbip-path`: (Optional) Specify the full path to the `usbip` executable within WSL. If not provided, it searches the system `PATH` and then the directory containing the `auto-attach` executable.
@@ -88,7 +90,7 @@ The command-line arguments are straightforward:
 Assuming you are on an amd64 WSL instance and your Windows host IP is `172.20.0.1`, and the device you want to keep attached has bus ID `1-2`:
 
 ```bash
-../x64/auto-attach 172.20.0.1 1-2 --verbose
+./build/x64/auto-attach 172.20.0.1 1-2 --verbose
 ```
 
 This command will continuously check if device `1-2` is attached from host `172.20.0.1`. If it's not attached but is available (listed), it will attempt to attach it using the `usbip` command.
