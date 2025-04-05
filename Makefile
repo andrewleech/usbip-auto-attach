@@ -6,17 +6,18 @@ CXX_AMD64 ?= x86_64-linux-musl-g++
 CXX_ARM64 ?= aarch64-linux-musl-g++
 
 # Common flags for static linking with MUSL and optimization
-# No external libraries needed now besides pthreads and standard C++ lib
 COMMON_FLAGS = -std=c++17 -static -Os -Wall -Wextra -pthread
 
-# Target specific flags (can add target-specific optimizations if needed)
+# Target specific flags
 AMD64_FLAGS = $(COMMON_FLAGS)
 ARM64_FLAGS = $(COMMON_FLAGS)
 
-# Source files
+# Source files and generated header
 SRCS = src/main.cpp
+VERSION_HEADER = src/version.h
+TEMPLATE_HEADER = version.h.in
 
-# Output directories (relative to the Makefile location)
+# Output directories
 OUT_DIR ?= ./build
 TARGET_AMD64 = $(OUT_DIR)/x64/auto-attach
 TARGET_ARM64 = $(OUT_DIR)/arm64/auto-attach
@@ -24,15 +25,21 @@ TARGET_ARM64 = $(OUT_DIR)/arm64/auto-attach
 # Default target: build both architectures
 all: $(TARGET_AMD64) $(TARGET_ARM64)
 
+# Rule to generate version.h from template using git-versioner
+$(VERSION_HEADER): $(TEMPLATE_HEADER)
+	@echo "Generating $(VERSION_HEADER)..."
+	@mkdir -p $(dir $@)
+	@git-versioner --template $(TEMPLATE_HEADER) -o $@
+
 # Target for amd64
-$(TARGET_AMD64): $(SRCS)
+$(TARGET_AMD64): $(SRCS) $(VERSION_HEADER)
 	@echo "Building static MUSL executable for amd64..."
 	@mkdir -p $(dir $@)
 	$(CXX_AMD64) $(AMD64_FLAGS) $(SRCS) -o $@
 	@echo "Built $@ successfully."
 
 # Target for arm64
-$(TARGET_ARM64): $(SRCS)
+$(TARGET_ARM64): $(SRCS) $(VERSION_HEADER)
 	@echo "Building static MUSL executable for arm64..."
 	@mkdir -p $(dir $@)
 	$(CXX_ARM64) $(ARM64_FLAGS) $(SRCS) -o $@
@@ -41,7 +48,7 @@ $(TARGET_ARM64): $(SRCS)
 # Clean target
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET_AMD64) $(TARGET_ARM64)
+	rm -f $(TARGET_AMD64) $(TARGET_ARM64) $(VERSION_HEADER)
 	@echo "Clean complete."
 
 .PHONY: all clean
