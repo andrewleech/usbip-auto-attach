@@ -8,7 +8,7 @@
             "request": "launch",
             // Resolved by Make Tools extension
             // Assumes the "Build amd64 (MUSL)" task has been run
-            "program": "/workspaces/output/x64/auto-attach",
+            "program": "${workspaceFolder}/build/x64/auto-attach",
             "args": [
                 // Example arguments: Replace with actual host IP and bus ID for testing
                 "172.19.112.1", 
@@ -17,7 +17,7 @@
                 //"--usbip-path", "/usr/sbin/usbip" // Optional: if usbip isn't in default PATH
             ],
             "stopAtEntry": false,
-            "cwd": "/app", // Workspace folder inside the container
+            "cwd": "${workspaceFolder}", // Workspace folder inside the container
             "environment": [],
             "externalConsole": false,
             "MIMode": "gdb",

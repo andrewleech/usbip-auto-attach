@@ -2,15 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 # Use MUSL-based cross-compilers for static linking
-# Assumes compilers like x86_64-linux-musl-g++ and aarch64-linux-musl-g++ are in the PATH
-# (These are provided by the Dockerfile which downloads them)
 CXX_AMD64 ?= x86_64-linux-musl-g++
 CXX_ARM64 ?= aarch64-linux-musl-g++
 
 # Common flags for static linking with MUSL and optimization
-# The -static flag is crucial for MUSL linking. Boost libraries are linked statically by default when found.
-# Ensure Boost development headers are available (installed via apt in Dockerfile).
-COMMON_FLAGS = -std=c++17 -static -Os -Wall -Wextra -pthread -lboost_program_options -lboost_system -lboost_process
+# No external libraries needed now besides pthreads and standard C++ lib
+COMMON_FLAGS = -std=c++17 -static -Os -Wall -Wextra -pthread
 
 # Target specific flags (can add target-specific optimizations if needed)
 AMD64_FLAGS = $(COMMON_FLAGS)
@@ -20,8 +17,7 @@ ARM64_FLAGS = $(COMMON_FLAGS)
 SRCS = src/main.cpp
 
 # Output directories (relative to the Makefile location)
-# Can be overridden e.g., OUT_DIR=/some/other/path make all
-OUT_DIR ?= ../
+OUT_DIR ?= ./build
 TARGET_AMD64 = $(OUT_DIR)/x64/auto-attach
 TARGET_ARM64 = $(OUT_DIR)/arm64/auto-attach
 
