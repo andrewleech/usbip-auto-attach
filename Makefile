@@ -29,7 +29,7 @@ all: $(TARGET_AMD64) $(TARGET_ARM64)
 $(VERSION_HEADER): $(TEMPLATE_HEADER)
 	@echo "Generating $(VERSION_HEADER)..."
 	@mkdir -p $(dir $@)
-	@git-versioner --template $(TEMPLATE_HEADER) -o $@
+	@git-versioner --template $(TEMPLATE_HEADER) $@ # Use --template <template> <output>
 
 # Target for amd64
 $(TARGET_AMD64): $(SRCS) $(VERSION_HEADER)
