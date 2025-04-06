@@ -1,54 +1,100 @@
-# SPDX-FileCopyrightText: 2025 The Anon Kode Authors
-# SPDX-License-Identifier: GPL-3.0-only
+# Build configuration
+BUILD_DIR := ./build
+SRC_DIR := ./src
+TEST_DIR := ./tests
 
-# Use MUSL-based cross-compilers for static linking
-CXX_AMD64 ?= x86_64-linux-musl-g++
-CXX_ARM64 ?= aarch64-linux-musl-g++
+# Source files
+SRCS := $(SRC_DIR)/main.cpp $(SRC_DIR)/parser.cpp
+TEST_SRCS := $(TEST_DIR)/parser_test.cpp $(SRC_DIR)/parser.cpp # Test includes parser implementation
 
-# Common flags for static linking with MUSL and optimization
-COMMON_FLAGS = -std=c++17 -static -Os -Wall -Wextra -pthread
+# Object files (intermediate build step for clarity and correctness)
+OBJS_AMD64 := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/obj/amd64/%.o,$(SRCS))
+OBJS_ARM64 := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/obj/arm64/%.o,$(SRCS))
 
-# Target specific flags
-AMD64_FLAGS = $(COMMON_FLAGS)
-ARM64_FLAGS = $(COMMON_FLAGS)
+# Test object files (using host compiler)
+# Need to map source paths correctly to object paths
+TEST_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/obj/test/src_%.o,$(filter $(SRC_DIR)/%.cpp,$(TEST_SRCS))) \
+             $(patsubst $(TEST_DIR)/%.cpp,$(BUILD_DIR)/obj/test/test_%.o,$(filter $(TEST_DIR)/%.cpp,$(TEST_SRCS)))
 
-# Source files and generated header
-SRCS = src/main.cpp
-VERSION_HEADER = src/version.h
-TEMPLATE_HEADER = version.h.in
+# Target executables
+TARGET_AMD64 := $(BUILD_DIR)/x64/usbip-auto-attach
+TARGET_ARM64 := $(BUILD_DIR)/arm64/usbip-auto-attach
+TEST_TARGET := $(BUILD_DIR)/test/parser_test
 
-# Output directories
-OUT_DIR ?= ./build
-TARGET_AMD64 = $(OUT_DIR)/x64/auto-attach
-TARGET_ARM64 = $(OUT_DIR)/arm64/auto-attach
+# Cross compilers (default to musl paths if running in the builder container)
+CXX_AMD64 ?= /opt/cross/bin/x86_64-linux-musl-g++
+CXX_ARM64 ?= /opt/cross/bin/aarch64-linux-musl-g++
+CXX_TEST ?= g++ # Use host compiler for tests
 
-# Default target: build both architectures
+# Compiler and Linker flags
+CPPFLAGS := -I$(SRC_DIR) -Wall -Wextra -std=c++17 -Os
+LDFLAGS := -pthread -static
+# Test flags might differ if needed, e.g., no static linking needed for host tests
+TEST_CPPFLAGS := -I$(SRC_DIR) -Wall -Wextra -std=c++17 # Same CPPFLAGS for test compilation
+TEST_LDFLAGS := -pthread    # Don't force static linking for tests
+
+# Version generation
+VERSION_HEADER := $(SRC_DIR)/version.h
+VERSION_TEMPLATE := version.h.in
+
+.PHONY: all clean test
+
 all: $(TARGET_AMD64) $(TARGET_ARM64)
 
-# Rule to generate version.h from template using git-versioner
-$(VERSION_HEADER): $(TEMPLATE_HEADER)
-	@echo "Generating $(VERSION_HEADER)..."
+# --- Version Header Generation ---
+$(VERSION_HEADER): $(VERSION_TEMPLATE) FORCE
+	@echo "Generating version header..."
 	@mkdir -p $(dir $@)
-	@git-versioner --template $(TEMPLATE_HEADER) $@ # Use --template <template> <output>
+	@/usr/local/bin/git-versioner --template $(VERSION_TEMPLATE) --output $(VERSION_HEADER) || echo "#define AUTO_ATTACH_VERSION \"unknown\"" > $(VERSION_HEADER)
 
-# Target for amd64
-$(TARGET_AMD64): $(SRCS) $(VERSION_HEADER)
-	@echo "Building static MUSL executable for amd64..."
-	@mkdir -p $(dir $@)
-	$(CXX_AMD64) $(AMD64_FLAGS) $(SRCS) -o $@
-	@echo "Built $@ successfully."
+FORCE: ;
 
-# Target for arm64
-$(TARGET_ARM64): $(SRCS) $(VERSION_HEADER)
-	@echo "Building static MUSL executable for arm64..."
-	@mkdir -p $(dir $@)
-	$(CXX_ARM64) $(ARM64_FLAGS) $(SRCS) -o $@
-	@echo "Built $@ successfully."
+# --- AMD64 Build ---
+$(TARGET_AMD64): $(OBJS_AMD64) | $(BUILD_DIR)/x64
+	@echo "Linking AMD64 target..."
+	$(CXX_AMD64) $(OBJS_AMD64) -o $@ $(LDFLAGS)
 
-# Clean target
+$(BUILD_DIR)/obj/amd64/%.o: $(SRC_DIR)/%.cpp $(VERSION_HEADER) | $(BUILD_DIR)/obj/amd64
+	@echo "Compiling AMD64 object: $<"
+	$(CXX_AMD64) $(CPPFLAGS) -c $< -o $@
+
+# --- ARM64 Build ---
+$(TARGET_ARM64): $(OBJS_ARM64) | $(BUILD_DIR)/arm64
+	@echo "Linking ARM64 target..."
+	$(CXX_ARM64) $(OBJS_ARM64) -o $@ $(LDFLAGS)
+
+$(BUILD_DIR)/obj/arm64/%.o: $(SRC_DIR)/%.cpp $(VERSION_HEADER) | $(BUILD_DIR)/obj/arm64
+	@echo "Compiling ARM64 object: $<"
+	$(CXX_ARM64) $(CPPFLAGS) -c $< -o $@
+
+# --- Test Build ---
+test: $(TEST_TARGET)
+	@echo "Running tests..."
+	@$(TEST_TARGET)
+
+$(TEST_TARGET): $(TEST_OBJS) | $(BUILD_DIR)/test
+	@echo "Linking test target..."
+	$(CXX_TEST) $(TEST_OBJS) -o $@ $(TEST_LDFLAGS)
+
+# Test object compilation rules
+# Rule for test files in TEST_DIR
+$(BUILD_DIR)/obj/test/test_%.o: $(TEST_DIR)/%.cpp | $(BUILD_DIR)/obj/test
+	@echo "Compiling test object: $<"
+	$(CXX_TEST) $(TEST_CPPFLAGS) -c $< -o $@
+
+# Rule for source files in SRC_DIR needed by tests
+$(BUILD_DIR)/obj/test/src_%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)/obj/test
+	@echo "Compiling test dependency object: $<"
+	$(CXX_TEST) $(TEST_CPPFLAGS) -c $< -o $@
+
+
+# --- Directory Creation ---
+$(BUILD_DIR)/x64 $(BUILD_DIR)/arm64 $(BUILD_DIR)/test \
+$(BUILD_DIR)/obj/amd64 $(BUILD_DIR)/obj/arm64 $(BUILD_DIR)/obj/test:
+	@mkdir -p $@
+
+# --- Clean ---
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f $(TARGET_AMD64) $(TARGET_ARM64) $(VERSION_HEADER)
-	@echo "Clean complete."
-
-.PHONY: all clean
+	rm -rf $(BUILD_DIR)
+	rm -f $(VERSION_HEADER)

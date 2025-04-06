@@ -15,8 +15,8 @@
 #include <algorithm>
 #include <regex>
 
-// Include the generated version header
 #include "version.h"
+#include "parser.h" // Include the new parser header
 
 // Function to trim leading/trailing whitespace
 std::string& trim(std::string& s) {
@@ -120,45 +120,9 @@ CommandResult run_command(const std::vector<std::string>& args, bool verbose = f
  *       It might not reliably detect attachment if only the device ID was used for attaching,
  *       as `usbip port` output format may not clearly show the remote device ID.
  */
-bool is_device_attached(const std::string& identifier, bool is_busid, const std::string& usbip_path, bool verbose) {
-    std::vector<std::string> args = {usbip_path, "port"};
-    try {
-        CommandResult result = run_command(args, verbose);
-        std::stringstream ss(result.output);
-        std::string line;
+// Placeholder for the original function, now moved to parser.cpp
+// Included via parser.h
 
-        if (is_busid) {
-            // Regex to match the bus ID pattern like ": busid 7-4, devid ..."
-            // Use [[:space:]] instead of \s for POSIX compatibility
-            std::regex busid_regex(".*busid +" + identifier + "[,[:space:]].*");
-            while (std::getline(ss, line)) {
-                if (std::regex_search(line, busid_regex)) {
-                    if (verbose) std::cerr << "Found attached busid '" << identifier << "' in usbip port output." << std::endl;
-                    return true;
-                }
-            }
-        } else {
-            // Attempt to find the device ID (less reliable)
-            // Example line might be: -> remote bus/dev 001/004, busid 1-1.4, devid 27
-            // Use [[:space:]] or $ (end of line) instead of \s for POSIX compatibility
-            std::regex devid_regex(".*devid +" + identifier + "([[:space:]]|$).*");
-             while (std::getline(ss, line)) {
-                if (std::regex_search(line, devid_regex)) {
-                    if (verbose) std::cerr << "Found attached devid '" << identifier << "' in usbip port output." << std::endl;
-                    return true;
-                }
-            }
-            if (verbose) std::cerr << "Could not reliably confirm attachment using device ID '" << identifier << "' from 'usbip port' output." << std::endl;
-        }
-
-        return false; // Not found or couldn't confirm
-    } catch (const std::exception& e) {
-        if (verbose) {
-            std::cerr << "Error checking device attachment: " << e.what() << std::endl;
-        }
-        return false; // Assume not attached if command fails
-    }
-}
 
 /**
  * @brief Checks if the target USB device is available for attachment on the remote host.
@@ -179,30 +143,9 @@ bool is_device_attached(const std::string& identifier, bool is_busid, const std:
  *            :  0 - Unknown class / Unknown subclass / Unknown protocol (00/00/00)
  *
  */
-bool is_device_available(const std::string& host_ip, const std::string& busid, const std::string& usbip_path, bool verbose) {
-    std::vector<std::string> args = {usbip_path, "list", "-r", host_ip};
-    try {
-        CommandResult result = run_command(args, verbose);
-        std::stringstream ss(result.output);
-        std::string line;
-        // Look for a line starting with the busid followed by a colon, ignoring leading whitespace.
-        std::string search_prefix = busid + ":";
+// Placeholder for the original function, now moved to parser.cpp
+// Included via parser.h
 
-        while (std::getline(ss, line)) {
-            std::string trimmed_line = trim(line);
-            if (trimmed_line.rfind(search_prefix, 0) == 0) { // Check if line starts with prefix
-                if (verbose) std::cerr << "Found available busid '" << busid << "' in usbip list output." << std::endl;
-                return true;
-            }
-        }
-        return false; // Not found
-    } catch (const std::exception& e) {
-        if (verbose) {
-            std::cerr << "Error checking device availability: " << e.what() << std::endl;
-        }
-        return false;
-    }
-}
 
 // Function to attach the device using either busid or device ID
 // Returns true on success, false on failure (including specific vhci error)
@@ -239,7 +182,8 @@ bool attach_device(const std::string& host_ip, const std::optional<std::string>&
         // Re-check attachment status only if we used busid, as it's more reliable
         if (is_busid) {
             std::this_thread::sleep_for(std::chrono::seconds(2)); // Give time for attach
-            return is_device_attached(identifier, true, usbip_path, verbose);
+            CommandResult port_result = run_command({usbip_path, "port"}, verbose);
+            return parse_usbip_port(port_result.output, identifier, true);
         } else {
             // For device ID attach, success means the command didn't throw/return error (or had the specific VHCI error handled above).
             // We cannot reliably verify with `usbip port`.
@@ -447,11 +391,16 @@ int main(int argc, char* argv[]) {
         std::string identifier = args.busid_opt.value_or(args.device_opt.value_or("")); // Should always have one
         bool check_by_busid = args.busid_opt.has_value();
 
-        if (args.verbose) {
-            std::cerr << "Checking device status for " << (check_by_busid ? "BUSID " : "Device ID ") << identifier << "..." << std::endl;
+        // Check device status by running `usbip port`
+        try {
+            CommandResult result = run_command({usbip_exec_path, "port"}, args.verbose);
+            currently_attached = parse_usbip_port(result.output, identifier, check_by_busid);
+        } catch (const std::exception& e) {
+            if (args.verbose) {
+                 std::cerr << "Error checking device attachment (running usbip port): " << e.what() << std::endl;
+            }
+            currently_attached = false; // Assume not attached if command fails
         }
-
-        currently_attached = is_device_attached(identifier, check_by_busid, usbip_exec_path, args.verbose);
 
         if (!currently_attached) {
             if (args.verbose) {
@@ -462,7 +411,8 @@ int main(int argc, char* argv[]) {
             bool available = false;
             if (check_by_busid) {
                 if (args.verbose) std::cerr << "Checking availability for BUSID " << *args.busid_opt << "..." << std::endl;
-                available = is_device_available(args.host_ip, *args.busid_opt, usbip_exec_path, args.verbose);
+                CommandResult list_result = run_command({usbip_exec_path, "list", "-r", args.host_ip}, args.verbose);
+                available = parse_usbip_list(list_result.output, *args.busid_opt);
             } else {
                 // We assume device is potentially available if specified by ID, as we can't easily check
                 available = true;
