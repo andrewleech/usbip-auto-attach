@@ -27,8 +27,17 @@ std::string& trim(std::string& s) {
     return s;
 }
 
-// Function to run a command and capture its output
-std::string run_command(const std::vector<std::string>& args, bool verbose = false) {
+// Struct to hold command result
+struct CommandResult {
+    std::string output;
+    int exit_code;
+    bool success; // True if popen/pclose succeeded and exit code was 0
+};
+
+// Function to run a command and capture its output and exit code
+CommandResult run_command(const std::vector<std::string>& args, bool verbose = false) {
+    CommandResult cmd_result = {"", -1, false};
+
     if (verbose) {
         std::cerr << "Running command:";
         for (const auto& arg : args) {
@@ -51,7 +60,6 @@ std::string run_command(const std::vector<std::string>& args, bool verbose = fal
     }
     command_str += " 2>&1"; // Redirect stderr to stdout
 
-    std::string result;
     FILE* pipe = popen(command_str.c_str(), "r");
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
@@ -59,40 +67,42 @@ std::string run_command(const std::vector<std::string>& args, bool verbose = fal
 
     char buffer[128];
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        result += buffer;
+        cmd_result.output += buffer;
     }
 
-    int exit_code = 0;
     int status = pclose(pipe);
     if (status == -1) {
         // pclose() failed
         throw std::runtime_error("pclose() failed!");
     } else {
         if (WIFEXITED(status)) {
-            exit_code = WEXITSTATUS(status);
-            if (exit_code != 0 && verbose) {
-                std::cerr << "Command exited with status " << exit_code << std::endl;
+            cmd_result.exit_code = WEXITSTATUS(status);
+            if (cmd_result.exit_code == 0) {
+                 cmd_result.success = true;
+            }
+            if (cmd_result.exit_code != 0 && verbose) {
+                std::cerr << "Command exited with status " << cmd_result.exit_code << std::endl;
+                std::cerr << "Command output:\n" << cmd_result.output << std::endl; // Log full output on error
             }
         } else if (WIFSIGNALED(status)) {
-             exit_code = 128 + WTERMSIG(status); // Mimic shell signal exit codes
+             cmd_result.exit_code = 128 + WTERMSIG(status); // Mimic shell signal exit codes
              if (verbose) {
                  std::cerr << "Command killed by signal " << WTERMSIG(status) << std::endl;
+                 std::cerr << "Command output:\n" << cmd_result.output << std::endl;
              }
         } else {
-            exit_code = -1; // Indicate unknown non-normal exit
             if (verbose) {
                  std::cerr << "Command exited abnormally." << std::endl;
+                 std::cerr << "Command output:\n" << cmd_result.output << std::endl;
             }
         }
     }
 
-    if (verbose) {
-         std::cerr << "Command output snippet:\n" << result.substr(0, 200) << (result.length() > 200 ? "..." : "") << std::endl;
+    if (verbose && cmd_result.exit_code == 0) { // Only log snippet on success
+         std::cerr << "Command output snippet:\n" << cmd_result.output.substr(0, 200) << (cmd_result.output.length() > 200 ? "..." : "") << std::endl;
     }
 
-    // Optionally, throw an exception or return a status struct if exit code matters more generally
-    // For now, just return output, caller can decide based on content/context
-    return result;
+    return cmd_result;
 }
 
 /**
@@ -113,8 +123,8 @@ std::string run_command(const std::vector<std::string>& args, bool verbose = fal
 bool is_device_attached(const std::string& identifier, bool is_busid, const std::string& usbip_path, bool verbose) {
     std::vector<std::string> args = {usbip_path, "port"};
     try {
-        std::string output = run_command(args, verbose);
-        std::stringstream ss(output);
+        CommandResult result = run_command(args, verbose);
+        std::stringstream ss(result.output);
         std::string line;
 
         if (is_busid) {
@@ -172,8 +182,8 @@ bool is_device_attached(const std::string& identifier, bool is_busid, const std:
 bool is_device_available(const std::string& host_ip, const std::string& busid, const std::string& usbip_path, bool verbose) {
     std::vector<std::string> args = {usbip_path, "list", "-r", host_ip};
     try {
-        std::string output = run_command(args, verbose);
-        std::stringstream ss(output);
+        CommandResult result = run_command(args, verbose);
+        std::stringstream ss(result.output);
         std::string line;
         // Look for a line starting with the busid followed by a colon, ignoring leading whitespace.
         std::string search_prefix = busid + ":";
@@ -195,6 +205,8 @@ bool is_device_available(const std::string& host_ip, const std::string& busid, c
 }
 
 // Function to attach the device using either busid or device ID
+// Returns true on success, false on failure (including specific vhci error)
+// Exits program if vhci error is detected.
 bool attach_device(const std::string& host_ip, const std::optional<std::string>& busid_opt, const std::optional<std::string>& device_opt, const std::string& usbip_path, bool verbose) {
     std::vector<std::string> args = {usbip_path, "attach", "-r", host_ip};
     bool is_busid = busid_opt.has_value();
@@ -209,21 +221,34 @@ bool attach_device(const std::string& host_ip, const std::optional<std::string>&
     }
 
     try {
-        run_command(args, verbose); // Output is usually minimal on success
+        CommandResult result = run_command(args, verbose);
+
+        // Check for specific vhci driver error
+        if (result.exit_code == 1 && result.output.find("open vhci_driver") != std::string::npos) {
+            std::cerr << "Error: Failed to open vhci_driver. VHCI kernel module may not be loaded." << std::endl;
+            std::cerr << "Try running: sudo modprobe vhci-hcd" << std::endl;
+            std::exit(2); // Exit the program with a specific code for this error
+        }
+
+        if (!result.success && verbose) {
+            // Log general failure if verbose, but don't exit unless it was the specific vhci error
+            std::cerr << "Attach command failed with exit code " << result.exit_code << ". Output:\n" << result.output << std::endl;
+            // Continue to check attachment status, as sometimes attach fails but device appears later?
+        }
 
         // Re-check attachment status only if we used busid, as it's more reliable
         if (is_busid) {
             std::this_thread::sleep_for(std::chrono::seconds(2)); // Give time for attach
             return is_device_attached(identifier, true, usbip_path, verbose);
         } else {
-            // For device ID attach, success means the command didn't throw/return error.
+            // For device ID attach, success means the command didn't throw/return error (or had the specific VHCI error handled above).
             // We cannot reliably verify with `usbip port`.
              if (verbose) std::cerr << "Attach command with device ID completed. Cannot reliably verify port status." << std::endl;
-            return true; // Assume success if command completed without exception
+            return result.success; // Return command success status (true if exit code was 0)
         }
     } catch (const std::exception& e) {
         if (verbose) {
-            std::cerr << "Error attaching device: " << e.what() << std::endl;
+            std::cerr << "Error running attach command: " << e.what() << std::endl;
         }
         return false;
     }
@@ -446,10 +471,16 @@ int main(int argc, char* argv[]) {
 
             if (available) {
                 std::cerr << "Device " << identifier << " is available (or assumed). Attempting to attach..." << std::endl;
+                // attach_device now handles the specific vhci error and exits if needed
                 if (attach_device(args.host_ip, args.busid_opt, args.device_opt, usbip_exec_path, args.verbose)) {
                     std::cerr << "Attach command for device " << identifier << " succeeded." << std::endl;
                 } else {
-                    std::cerr << "Failed to attach device " << identifier << std::endl;
+                    // Don't print generic "Failed to attach" if attach_device exited due to vhci error
+                    // A more complex error handling mechanism could be used here if needed
+                    // For now, rely on the error printed by attach_device before exiting
+                     if (errno != ECANCELED) { // Crude check if we exited or just failed normally
+                        std::cerr << "Failed to attach device " << identifier << std::endl;
+                     }
                 }
             } else {
                  // This block only reached if check_by_busid was true and device wasn't available
