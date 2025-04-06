@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 The Anon Kode Authors
 # SPDX-License-Identifier: GPL-3.0-only
 
-name: Build Executables
+name: Build and Test
 
 on:
   push:
@@ -14,8 +14,8 @@ on:
       - '**'
 
 jobs:
-  build:
-    name: Build static executables
+  build_and_test:
+    name: Build, Test, and Upload
     runs-on: ubuntu-latest
 
     steps:
@@ -31,8 +31,17 @@ jobs:
       - name: Build local Docker image
         run: docker build -t usbip-auto-attach-builder .
 
+      - name: Run Tests using Docker
+        # Mount workspace, set working dir, run make test
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:${{ github.workspace }} \
+            -w ${{ github.workspace }} \
+            usbip-auto-attach-builder \
+            make test
+
       - name: Compile executables using Docker
-        # Mount workspace to same path, set working dir, run make
+        # Mount workspace, set working dir, run make all
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:${{ github.workspace }} \
