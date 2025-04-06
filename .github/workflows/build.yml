@@ -44,12 +44,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: usbip-auto-attach-amd64
-          path: ${{ github.workspace }}/build/x64/usbip-auto-attach
+          path: ${{ github.workspace }}/build/x64/usbip-auto-attach # Correct executable name
           if-no-files-found: error
 
       - name: Upload arm64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: usbip-auto-attach-arm64
-          path: ${{ github.workspace }}/build/arm64/usbip-auto-attach
+          path: ${{ github.workspace }}/build/arm64/usbip-auto-attach # Correct executable name
           if-no-files-found: error

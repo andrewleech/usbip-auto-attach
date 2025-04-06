@@ -119,7 +119,8 @@ bool is_device_attached(const std::string& identifier, bool is_busid, const std:
 
         if (is_busid) {
             // Regex to match the bus ID pattern like ": busid 7-4, devid ..."
-            std::regex busid_regex(".*busid +" + identifier + "[,\s].*");
+            // Use [[:space:]] instead of \s for POSIX compatibility
+            std::regex busid_regex(".*busid +" + identifier + "[,[:space:]].*");
             while (std::getline(ss, line)) {
                 if (std::regex_search(line, busid_regex)) {
                     if (verbose) std::cerr << "Found attached busid '" << identifier << "' in usbip port output." << std::endl;
@@ -129,7 +130,8 @@ bool is_device_attached(const std::string& identifier, bool is_busid, const std:
         } else {
             // Attempt to find the device ID (less reliable)
             // Example line might be: -> remote bus/dev 001/004, busid 1-1.4, devid 27
-            std::regex devid_regex(".*devid +" + identifier + "[\s$].*"); // Match devid followed by space or end of line
+            // Use [[:space:]] or $ (end of line) instead of \s for POSIX compatibility
+            std::regex devid_regex(".*devid +" + identifier + "([[:space:]]|$).*");
              while (std::getline(ss, line)) {
                 if (std::regex_search(line, devid_regex)) {
                     if (verbose) std::cerr << "Found attached devid '" << identifier << "' in usbip port output." << std::endl;
