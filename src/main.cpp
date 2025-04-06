@@ -48,11 +48,18 @@ CommandResult run_command(const std::vector<std::string>& args, bool verbose = f
 
     std::string command_str;
     for (size_t i = 0; i < args.size(); ++i) {
-        // Simple quoting for arguments with spaces (basic protection)
-        bool has_space = args[i].find(' ') != std::string::npos;
-        if (has_space) command_str += '\"';
-        command_str += args[i];
-        if (has_space) command_str += '\"';
+        // Defensively quote all arguments using single quotes
+        // Replace internal single quotes with '''
+        std::string quoted_arg = "'";
+        for (char c : args[i]) {
+            if (c == '\'') {
+                quoted_arg += "'\\\''"; // Replace ' with '''
+            } else {
+                quoted_arg += c;
+            }
+        }
+        quoted_arg += "'";
+        command_str += quoted_arg;
 
         if (i < args.size() - 1) {
             command_str += " ";
