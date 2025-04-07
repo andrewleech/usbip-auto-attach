@@ -1,14 +1,54 @@
 # usbip-auto-attach
 
-A Linux utility designed to automatically attach a specified USB device from a remote USBIP host (running `usbipd` or similar) to the local machine using the `usbip` command. 
+A Linux utility designed to automatically attach a specified USB device from a remote USBIP host (running `usbipd` or similar) to the local machine using the `usbip` command.
 
 When a specific USB device is detached from the host, this tool monitors for its reappearance and automatically attaches it back to the local machine. This is useful for devices that need to be persistently available locally via USBIP, even if they are temporarily disconnected or the connection is reset.
 
 It produces static MUSL-linked executables for portability across Linux distributions.
 
+**Pre-compiled static binaries for `linux/amd64` and `linux/arm64` are available from the [GitHub Releases page](https://github.com/corona10/usbip-auto-attach/releases).**
+
+## Usage
+
+Download the appropriate binary for your architecture (`usbip-auto-attach-amd64` or `usbip-auto-attach-arm64`) from the Releases page and make it executable (`chmod +x <binary_name>`).
+
+The command-line arguments are as follows:
+
+```
+Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
+  <host_ip>           IP address of the remote USBIP host.
+  -b, --busid <busid> Bus ID of the USB device to monitor and attach (e.g., 1-2). Mutually exclusive with -d.
+  -d, --device <devid> Device ID (UDC ID) on the remote host to attach. Mutually exclusive with -b.
+                      Note: Availability/attachment status checks are less reliable with -d.
+  --usbip-path <path> (Optional) Full path to the local usbip executable.
+                      Searches PATH if not provided.
+  -v, --verbose       Enable detailed logging to stderr.
+  --version           Print version information and exit.
+  -h, --help          Show this help message and exit.
+```
+
+*   `<host_ip>`: IP address of the remote host sharing the USB device.
+*   `-b <busid>` or `-d <devid>`: You must specify *one* of these options to identify the target device.
+    *   `busid`: The bus ID (e.g., `1-2`) is generally preferred as status checking is more reliable. Find this using `usbip list -r <host_ip>` on the local machine *before* the device is attached.
+    *   `devid`: The device ID (UDC ID) on the remote host (e.g., `foo_udc.0`). Availability checking is less reliable with this option.
+*   `--usbip-path`: (Optional) Specify the full path to the `usbip` executable on the local machine if it's not in the system `PATH`.
+*   `-v`, `--verbose`: Enable detailed logging.
+*   `--version`: Print version information.
+*   `-h`, `--help`: Show usage information.
+
+**Example:**
+
+Assuming the pre-compiled amd64 binary is in the current directory, the remote host IP is `192.168.1.100`, and the device you want to keep attached has bus ID `1-2`:
+
+```bash
+./usbip-auto-attach-amd64 192.168.1.100 -b 1-2 --verbose
+```
+
+This command will continuously check if device `1-2` is attached from host `192.168.1.100`. If it's not attached but is available (listed), it will attempt to attach it using the local `usbip` command.
+
 ## Building (Recommended: Using Docker)
 
-The easiest way to build the static MUSL executables for `linux/amd64` and `linux/arm64` is using Docker. This ensures a consistent build environment with all necessary cross-compilers and tools.
+If you prefer to build from source, the easiest way to build the static MUSL executables for `linux/amd64` and `linux/arm64` is using Docker. This ensures a consistent build environment with all necessary cross-compilers and tools.
 
 **Prerequisites:**
 
@@ -46,32 +86,6 @@ The easiest way to build the static MUSL executables for `linux/amd64` and `linu
     *   `./build/x64/usbip-auto-attach` (for amd64)
     *   `./build/arm64/usbip-auto-attach` (for arm64)
 
-## Usage
-
-The command-line arguments are straightforward:
-
-```
-./build/<arch>/usbip-auto-attach <host_ip> <busid> [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
-```
-
-*   `<arch>`: Either `x64` or `arm64` depending on your local architecture.
-*   `<host_ip>`: IP address of the remote host sharing the USB device.
-*   `<busid>`: Bus ID of the USB device to monitor and attach (e.g., `1-2`). You can find this using `usbip list -r <host_ip>` *before* attaching the device for the first time.
-*   `--usbip-path`: (Optional) Specify the full path to the `usbip` executable on the local machine. If not provided, it searches the system `PATH`.
-*   `-v`, `--verbose`: Enable detailed logging to stderr, showing checks and command executions.
-*   `--version`: Print version information (derived from git) and exit.
-*   `-h`, `--help`: Show usage information and exit.
-
-**Example:**
-
-Assuming you are on an amd64 machine, the remote host IP is `192.168.1.100`, and the device you want to keep attached has bus ID `1-2`:
-
-```bash
-./build/x64/usbip-auto-attach 192.168.1.100 1-2 --verbose
-```
-
-This command will continuously check if device `1-2` is attached from host `192.168.1.100`. If it's not attached but is available (listed), it will attempt to attach it using the local `usbip` command.
-
 ## Why Static Linking with MUSL?
 
 This project aims to create truly portable static executables. This is achieved by linking against the [MUSL C library](https://musl.libc.org/) instead of the more common GNU C Library (glibc).
@@ -85,4 +99,4 @@ This project aims to create truly portable static executables. This is achieved 
 This repository includes GitHub Actions workflows (`.github/workflows/`) for automation:
 
 *   **`build.yml`**: Builds the static executables for amd64 and arm64 on every push and pull request, uploading them as build artifacts.
-*   **`release.yml`**: Builds the static executables and creates a GitHub Release, attaching the compiled binaries as assets, whenever a tag matching the pattern `v*.*.*` (e.g., `v1.0.0`) is pushed.
+*   **`release.yml`**: Builds the static executables and creates a GitHub Release (attaching the compiled binaries as assets and generating release notes) whenever a tag matching the pattern `v*.*.*` (e.g., `v1.0.0`) is pushed.
