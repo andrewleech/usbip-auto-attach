@@ -6,7 +6,7 @@ name: Create Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*'
 
 jobs:
   build_and_release:
@@ -43,7 +43,7 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
           body: |-
-            Static MUSL builds of the usbip-auto-attach utility.
+            Static builds of the usbip-auto-attach utility.
             - `usbip-auto-attach-amd64`: Linux x86_64
             - `usbip-auto-attach-arm64`: Linux ARM64
           draft: false

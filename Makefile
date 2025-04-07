@@ -45,7 +45,7 @@ all: $(TARGET_AMD64) $(TARGET_ARM64)
 $(VERSION_HEADER): $(VERSION_TEMPLATE) FORCE
 	@echo "Generating version header..."
 	@mkdir -p $(dir $@)
-	@/usr/local/bin/git-versioner --template $(VERSION_TEMPLATE) --output $(VERSION_HEADER) || echo "#define AUTO_ATTACH_VERSION \"unknown\"" > $(VERSION_HEADER)
+	@/usr/local/bin/git-versioner --template $(VERSION_TEMPLATE) $(VERSION_HEADER) || echo "#define AUTO_ATTACH_VERSION \"unknown\"" > $(VERSION_HEADER)
 
 FORCE: ;
 
