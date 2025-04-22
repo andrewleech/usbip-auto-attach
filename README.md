@@ -4,7 +4,7 @@ A Linux utility designed to automatically attach a specified USB device from a r
 
 When a specific USB device is detached from the host, this tool monitors for its reappearance and automatically attaches it back to the local machine. This is useful for devices that need to be persistently available locally via USBIP, even if they are temporarily disconnected or the connection is reset.
 
-It produces static MUSL-linked executables for portability across Linux distributions.
+It produces small, static MUSL-linked C executables for maximum portability across Linux distributions.
 
 **Pre-compiled static binaries for `linux/amd64` and `linux/arm64` are available from the [GitHub Releases page](https://github.com/corona10/usbip-auto-attach/releases).**
 
@@ -71,12 +71,13 @@ If you prefer to build from source, the easiest way to build the static MUSL exe
 
     ```bash
     # On Linux/macOS
-    docker run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" usbip-auto-attach-builder make all
+    docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):$(pwd)" -w "$(pwd)" usbip-auto-attach-builder make all
 
     # On Windows (Command Prompt/PowerShell) - Use %cd% for current directory
     # docker run --rm -v "%cd%:%cd%" -w "%cd%" usbip-auto-attach-builder make all
     ```
     *   `--rm`: Removes the container after it exits.
+    *   `--user "$(id -u):$(id -g)"`: Runs the container as the current user/group to maintain file permissions.
     *   `-v "$(pwd):$(pwd)"`: Mounts the current host directory to the same path inside the container.
     *   `-w "$(pwd)"`: Sets the working directory inside the container.
     *   `usbip-auto-attach-builder`: The name of the Docker image built in the previous step.
@@ -86,6 +87,14 @@ If you prefer to build from source, the easiest way to build the static MUSL exe
     *   `./build/x64/usbip-auto-attach` (for amd64)
     *   `./build/arm64/usbip-auto-attach` (for arm64)
 
+4.  **Run unit tests using the Docker image:**
+    This command runs `make test` inside a container based on the image you just built. It mounts the current host directory (containing source and Makefile) to the same path inside the container and sets it as the working directory.
+
+    ```bash
+    docker run --rm --user "$(id -u):$(id -g)" -v "$(pwd):$(pwd)" -w "$(pwd)" usbip-auto-attach-builder make test
+    ```
+    The results are printed to the console.
+    
 ## Why Static Linking with MUSL?
 
 This project aims to create truly portable static executables. This is achieved by linking against the [MUSL C library](https://musl.libc.org/) instead of the more common GNU C Library (glibc).
