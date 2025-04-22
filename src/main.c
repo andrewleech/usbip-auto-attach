@@ -427,10 +427,23 @@ void print_usage(const char* prog_name) {
     fprintf(stderr, "  -h, --help          Show this help message and exit.\n");
 }
 
+/* Device status constants */
+#define STATUS_UNKNOWN       0
+#define STATUS_ATTACHED      1
+#define STATUS_NOT_ATTACHED  2
+#define STATUS_NOT_AVAILABLE 3
+#define STATUS_AVAILABLE     4
+#define STATUS_ATTACH_FAIL   5
+#define STATUS_ATTACH_SUCCESS 6
+
 /* Main function */
 int main(int argc, char* argv[]) {
     Args args;
     char usbip_exec_path[MAX_PATH_LEN] = {0};
+    int last_status = STATUS_UNKNOWN;
+    char timestamp[32] = {0};
+    time_t now;
+    struct tm *tm_info;
     
     /* Parse command-line arguments */
     parse_args(argc, argv, &args);
@@ -459,14 +472,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    /* Show info if verbose */
+    /* Print initial status information */
+    if (args.has_busid) {
+        fprintf(stderr, "Monitoring host %s for BUSID: %s\n", args.host_ip, args.busid);
+    } else {
+        fprintf(stderr, "Monitoring host %s for Device ID: %s\n", args.host_ip, args.device);
+    }
+    
     if (args.verbose) {
         fprintf(stderr, "Using usbip executable: %s\n", usbip_exec_path);
-        if (args.has_busid) {
-            fprintf(stderr, "Monitoring host: %s for BUSID: %s\n", args.host_ip, args.busid);
-        } else {
-            fprintf(stderr, "Monitoring host: %s for Device ID: %s\n", args.host_ip, args.device);
-        }
+        fprintf(stderr, "Running in verbose mode\n");
     }
     
     /* Setup signal handling using standard signal() */
@@ -475,9 +490,17 @@ int main(int argc, char* argv[]) {
     
     /* Main loop */
     while (keep_running) {
+        int current_status;
         int currently_attached = 0;
+        int available = 0;
         const char* identifier = args.has_busid ? args.busid : args.device; /* Should always have one */
         int check_by_busid = args.has_busid;
+        int status_changed = 0;
+        
+        /* Generate timestamp for logs */
+        now = time(NULL);
+        tm_info = localtime(&now);
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
         
         /* Check device status by running `usbip port` */
         {
@@ -487,22 +510,34 @@ int main(int argc, char* argv[]) {
             if (result.success) {
                 currently_attached = parse_usbip_port(result.output, identifier, check_by_busid);
             } else if (args.verbose) {
-                fprintf(stderr, "Error checking device attachment (running usbip port): Command failed\n");
+                fprintf(stderr, "%s Error checking device attachment (running usbip port): Command failed\n", timestamp);
             }
             
             free(result.output);
         }
         
-        if (!currently_attached) {
+        if (currently_attached) {
+            current_status = STATUS_ATTACHED;
+            
             if (args.verbose) {
-                fprintf(stderr, "Device %s not attached.\n", identifier);
+                fprintf(stderr, "%s Device %s is attached.\n", timestamp, identifier);
+            }
+        } else {
+            /* First check - Not attached */
+            current_status = STATUS_NOT_ATTACHED;
+            
+            /* Log when a device transitions from attached to detached */
+            if (last_status == STATUS_ATTACHED) {
+                fprintf(stderr, "%s Device %s is now detached.\n", timestamp, identifier);
+                status_changed = 1;
+            } else if (args.verbose) {
+                fprintf(stderr, "%s Device %s not attached.\n", timestamp, identifier);
             }
             
             /* Only check availability if using BUSID, as 'usbip list' uses BUSID */
-            int available = 0;
             if (check_by_busid) {
                 if (args.verbose) {
-                    fprintf(stderr, "Checking availability for BUSID %s...\n", args.busid);
+                    fprintf(stderr, "%s Checking availability for BUSID %s...\n", timestamp, args.busid);
                 }
                 
                 const char* list_args[4] = {usbip_exec_path, "list", "-r", args.host_ip};
@@ -514,33 +549,58 @@ int main(int argc, char* argv[]) {
                 /* We assume device is potentially available if specified by ID */
                 available = 1;
                 if (args.verbose) {
-                    fprintf(stderr, "Availability check skipped when using Device ID.\n");
+                    fprintf(stderr, "%s Availability check skipped when using Device ID.\n", timestamp);
                 }
             }
             
             if (available) {
-                fprintf(stderr, "Device %s is available (or assumed). Attempting to attach...\n", identifier);
+                current_status = STATUS_AVAILABLE;
+                
+                /* Always show when a device becomes available */
+                if (last_status != STATUS_AVAILABLE) {
+                    fprintf(stderr, "%s Device %s is available. Attempting to attach...\n", timestamp, identifier);
+                    status_changed = 1;
+                } else if (args.verbose) {
+                    fprintf(stderr, "%s Device %s is available. Attempting to attach...\n", timestamp, identifier);
+                }
                 
                 if (attach_device(args.host_ip, args.has_busid ? args.busid : NULL, 
                                  args.has_device ? args.device : NULL, 
                                  usbip_exec_path, args.verbose)) {
-                    fprintf(stderr, "Attach command for device %s succeeded.\n", identifier);
+                    current_status = STATUS_ATTACH_SUCCESS;
+                    fprintf(stderr, "%s Attach command for device %s succeeded.\n", timestamp, identifier);
                 } else {
                     /* Don't print generic failure message if attach_device exited due to vhci error */
                     if (errno != ECANCELED) {
-                        fprintf(stderr, "Failed to attach device %s\n", identifier);
+                        current_status = STATUS_ATTACH_FAIL;
+                        fprintf(stderr, "%s Failed to attach device %s\n", timestamp, identifier);
                     }
                 }
             } else {
                 /* This block only reached if check_by_busid was true and device wasn't available */
-                if (args.verbose) {
-                    fprintf(stderr, "Device BUSID %s is not available on host %s\n", identifier, args.host_ip);
+                current_status = STATUS_NOT_AVAILABLE;
+                
+                /* Always show when a device is not available (status change) */
+                if (last_status != STATUS_NOT_AVAILABLE) {
+                    fprintf(stderr, "%s Device BUSID %s is not available on host %s\n", 
+                            timestamp, identifier, args.host_ip);
+                    status_changed = 1;
+                } else if (args.verbose) {
+                    fprintf(stderr, "%s Device BUSID %s is not available on host %s\n", 
+                            timestamp, identifier, args.host_ip);
                 }
             }
-        } else {
-            if (args.verbose) {
-                fprintf(stderr, "Device %s is attached.\n", identifier);
+        }
+        
+        /* Remember the last status */
+        if (current_status != last_status) {
+            if (!status_changed && current_status == STATUS_ATTACHED) {
+                /* Print attachment status change if not already printed */
+                fprintf(stderr, "%s Device %s is now attached.\n", timestamp, identifier);
             }
+            
+            /* Update last status */
+            last_status = current_status;
         }
         
         /* Wait before checking again, checking keep_running more frequently */
