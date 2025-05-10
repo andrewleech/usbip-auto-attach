@@ -24,11 +24,15 @@ TEST_TARGET := $(BUILD_DIR)/test/parser_test
 # Cross compilers (default to musl paths if running in the builder container)
 # Use gcc instead of g++ for C code
 CC_AMD64 ?= /opt/cross/bin/x86_64-linux-musl-gcc
+OBJCOPY_AMD64 ?= /opt/cross/bin/x86_64-linux-musl-objcopy
+STRIP_AMD64 ?= /opt/cross/bin/x86_64-linux-musl-strip
 CC_ARM64 ?= /opt/cross/bin/aarch64-linux-musl-gcc
+OBJCOPY_ARM64 ?= /opt/cross/bin/aarch64-linux-musl-objcopy
+STRIP_ARM64 ?= /opt/cross/bin/aarch64-linux-musl-strip
 CC_TEST ?= gcc # Use host compiler for tests
 
 # Compiler and Linker flags for C (changed from C++)
-CFLAGS := -I$(SRC_DIR) -Wall -Wextra -std=c99 -Os
+CFLAGS := -I$(SRC_DIR) -Wall -Wextra -std=c99 -Os -g
 LDFLAGS := -pthread -static
 # Test flags
 TEST_CFLAGS := -I$(SRC_DIR) -Wall -Wextra -std=c99 # Same CFLAGS for test compilation
@@ -54,6 +58,12 @@ FORCE: ;
 $(TARGET_AMD64): $(OBJS_AMD64) | $(BUILD_DIR)/x64
 	@echo "Linking AMD64 target..."
 	$(CC_AMD64) $(OBJS_AMD64) -o $@ $(LDFLAGS)
+	@echo "Splitting off the debug symbols..."
+	$(OBJCOPY_AMD64) --only-keep-debug $(TARGET_AMD64) $(TARGET_AMD64).debug
+	@echo "Stripping the target..."
+	$(STRIP_AMD64) --strip-unneeded $(TARGET_AMD64)
+	@echo "Adding link to debug symbols..."
+	$(OBJCOPY_AMD64) --add-gnu-debuglink=$(TARGET_AMD64).debug $(TARGET_AMD64)
 
 $(BUILD_DIR)/obj/amd64/%.o: $(SRC_DIR)/%.c $(VERSION_HEADER) | $(BUILD_DIR)/obj/amd64
 	@echo "Compiling AMD64 object: $<"
@@ -63,6 +73,12 @@ $(BUILD_DIR)/obj/amd64/%.o: $(SRC_DIR)/%.c $(VERSION_HEADER) | $(BUILD_DIR)/obj/
 $(TARGET_ARM64): $(OBJS_ARM64) | $(BUILD_DIR)/arm64
 	@echo "Linking ARM64 target..."
 	$(CC_ARM64) $(OBJS_ARM64) -o $@ $(LDFLAGS)
+	@echo "Splitting off the debug symbols..."
+	$(OBJCOPY_ARM64) --only-keep-debug $(TARGET_ARM64) $(TARGET_ARM64).debug
+	@echo "Stripping the target..."
+	$(OBJCOPY_ARM64) --strip-unneeded $(TARGET_ARM64)
+	@echo "Adding link to debug symbols..."
+	$(OBJCOPY_ARM64) --add-gnu-debuglink=$(TARGET_ARM64).debug $(TARGET_ARM64)
 
 $(BUILD_DIR)/obj/arm64/%.o: $(SRC_DIR)/%.c $(VERSION_HEADER) | $(BUILD_DIR)/obj/arm64
 	@echo "Compiling ARM64 object: $<"
