@@ -1,4 +1,3 @@
-\
 {
     "version": "0.2.0",
     "configurations": [
@@ -8,10 +7,11 @@
             "request": "launch",
             // Resolved by Make Tools extension
             // Assumes the "Build amd64 (MUSL)" task has been run
-            "program": "${workspaceFolder}/build/x64/auto-attach",
+            "program": "${workspaceFolder}/build/x64/usbip-auto-attach",
             "args": [
                 // Example arguments: Replace with actual host IP and bus ID for testing
-                "172.19.112.1", 
+                "172.26.224.1", 
+                "-b",
                 "1-2",
                 "--verbose"
                 //"--usbip-path", "/usr/sbin/usbip" // Optional: if usbip isn't in default PATH
@@ -29,11 +29,7 @@
                 }
             ],
             // This preLaunchTask must match the label of the build task in tasks.json
-            "preLaunchTask": "Build amd64 (MUSL)", 
-            // Points to the correct source code location within the container
-            "sourceFileMap": {
-                "/app": "${workspaceFolder}"
-            }
+            "preLaunchTask": "Build amd64 (MUSL)"
         }
     ]
 }
