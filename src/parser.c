@@ -125,13 +125,60 @@ int parse_usbip_list(const char* output, const char* busid) {
                 return 1; // Found match
             }
         }
-        
+
         // Move to next line
         line_start = line_end;
         if (line_start && *line_start == '\n') {
             line_start++; // Skip newline
         }
     }
-    
+
     return 0; // No match found
+}
+
+int parse_host_port(const char* input, char* host_out, size_t host_out_size, int* port_out) {
+    const char* colon;
+    size_t host_len;
+    const char* port_str;
+    size_t i;
+    long port_val;
+    int final_port;
+
+    if (host_out_size == 0) return -3;
+
+    *port_out = 0; /* invalid sentinel; only set on success */
+
+    if (!input || !*input) return -3;
+
+    colon = strrchr(input, ':');
+
+    if (!colon) {
+        strncpy(host_out, input, host_out_size - 1);
+        host_out[host_out_size - 1] = '\0';
+        *port_out = USBIP_DEFAULT_PORT;
+        return 0;
+    }
+
+    host_len = (size_t)(colon - input);
+    if (host_len == 0) return -3;
+
+    port_str = colon + 1;
+    if (*port_str == '\0') {
+        /* trailing colon: use default port */
+        final_port = USBIP_DEFAULT_PORT;
+    } else {
+        for (i = 0; port_str[i] != '\0'; i++) {
+            if (!isdigit((unsigned char)port_str[i])) return -2;
+        }
+        port_val = strtol(port_str, NULL, 10);
+        if (port_val < 1 || port_val > 65535) return -1;
+        final_port = (int)port_val;
+    }
+
+    /* All validation passed — write outputs */
+    if (host_len >= host_out_size) host_len = host_out_size - 1;
+    memcpy(host_out, input, host_len);
+    host_out[host_len] = '\0';
+    *port_out = final_port;
+    return 0;
 }

@@ -107,9 +107,110 @@ void test_parse_usbip_list() {
     printf("test_parse_usbip_list PASSED\n");
 }
 
+void test_parse_host_port() {
+    printf("Running test_parse_host_port...\n");
+    char host[256];
+    int port;
+    int rc;
+
+    /* plain host -> default port */
+    rc = parse_host_port("192.168.1.1", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "plain host: rc");
+    ASSERT_MSG(strcmp(host, "192.168.1.1") == 0, "plain host: host");
+    ASSERT_MSG(port == USBIP_DEFAULT_PORT, "plain host: port");
+
+    /* host:port */
+    rc = parse_host_port("192.168.1.1:63240", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "host:port: rc");
+    ASSERT_MSG(strcmp(host, "192.168.1.1") == 0, "host:port: host");
+    ASSERT_MSG(port == 63240, "host:port: port");
+
+    /* hostname only */
+    rc = parse_host_port("myserver", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "hostname: rc");
+    ASSERT_MSG(strcmp(host, "myserver") == 0, "hostname: host");
+    ASSERT_MSG(port == USBIP_DEFAULT_PORT, "hostname: port");
+
+    /* hostname:port */
+    rc = parse_host_port("myserver:9000", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "hostname:port: rc");
+    ASSERT_MSG(strcmp(host, "myserver") == 0, "hostname:port: host");
+    ASSERT_MSG(port == 9000, "hostname:port: port");
+
+    /* port=1 (minimum) */
+    rc = parse_host_port("host:1", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "port=1: rc");
+    ASSERT_MSG(port == 1, "port=1: value");
+
+    /* port=65535 (maximum) */
+    rc = parse_host_port("host:65535", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "port=65535: rc");
+    ASSERT_MSG(port == 65535, "port=65535: value");
+
+    /* port=0 -> out of range */
+    rc = parse_host_port("host:0", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -1, "port=0: out of range");
+
+    /* port=65536 -> out of range */
+    rc = parse_host_port("host:65536", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -1, "port=65536: out of range");
+
+    /* non-numeric port */
+    rc = parse_host_port("host:abc", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -2, "non-numeric port");
+
+    /* mixed port */
+    rc = parse_host_port("host:123abc", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -2, "mixed port");
+
+    /* empty host */
+    rc = parse_host_port(":3240", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -3, "empty host");
+
+    /* trailing colon -> default port */
+    rc = parse_host_port("host:", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "trailing colon: rc");
+    ASSERT_MSG(strcmp(host, "host") == 0, "trailing colon: host");
+    ASSERT_MSG(port == USBIP_DEFAULT_PORT, "trailing colon: port");
+
+    /* explicit default port value */
+    rc = parse_host_port("host:3240", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "explicit default port: rc");
+    ASSERT_MSG(port == 3240, "explicit default port: value");
+
+    /* negative port (leading '-' fails digit check) */
+    rc = parse_host_port("host:-1", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -2, "negative port: non-numeric");
+
+    /* very large numeric port (overflow) */
+    rc = parse_host_port("host:999999999999", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -1, "overflow port: out of range");
+
+    /* host_out_size == 0: must return -3 without writing anything */
+    rc = parse_host_port("host:3240", host, 0, &port);
+    ASSERT_MSG(rc == -3, "host_out_size=0: must fail");
+
+    /* host truncated when longer than host_out_size */
+    {
+        char small[5]; /* only 4 chars + NUL */
+        rc = parse_host_port("toolonghost", small, sizeof(small), &port);
+        ASSERT_MSG(rc == 0, "host truncation: rc");
+        ASSERT_MSG(small[sizeof(small) - 1] == '\0', "host truncation: NUL terminated");
+    }
+
+    /* port_out is 0 on error, not USBIP_DEFAULT_PORT */
+    port = USBIP_DEFAULT_PORT; /* pre-set to detect if it gets touched */
+    rc = parse_host_port("host:abc", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -2, "port_out on error: rc");
+    ASSERT_MSG(port == 0, "port_out on error: must be 0 sentinel");
+
+    printf("test_parse_host_port PASSED\n");
+}
+
 int main() {
     test_parse_usbip_port();
     test_parse_usbip_list();
+    test_parse_host_port();
     printf("All tests PASSED\n");
     return 0;
 }
