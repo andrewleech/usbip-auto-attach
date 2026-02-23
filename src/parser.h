@@ -36,8 +36,8 @@ int parse_usbip_list(const char* output, const char* busid);
 /**
  * @brief Parses a "host" or "host:port" string into separate components.
  *
- * On success, host_out and port_out are written. On error, neither output is
- * modified (port_out is set to 0 as an invalid sentinel on entry).
+ * port_out is always set: to a valid port on success, or to 0 (invalid
+ * sentinel) on every error path. host_out is only written on success.
  *
  * IPv6 addresses are not supported. A bare IPv6 address such as "fe80::1"
  * will be split on its last colon and the result is undefined.

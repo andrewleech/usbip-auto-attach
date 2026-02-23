@@ -204,6 +204,28 @@ void test_parse_host_port() {
     ASSERT_MSG(rc == -2, "port_out on error: rc");
     ASSERT_MSG(port == 0, "port_out on error: must be 0 sentinel");
 
+    /* NULL input */
+    rc = parse_host_port(NULL, host, sizeof(host), &port);
+    ASSERT_MSG(rc == -3, "NULL input: must fail");
+
+    /* empty string input */
+    rc = parse_host_port("", host, sizeof(host), &port);
+    ASSERT_MSG(rc == -3, "empty input: must fail");
+
+    /* host truncation on colon path: host_len >= host_out_size */
+    {
+        char small[5]; /* only 4 chars + NUL */
+        rc = parse_host_port("toolonghost:8080", small, sizeof(small), &port);
+        ASSERT_MSG(rc == 0, "colon-path host truncation: rc");
+        ASSERT_MSG(small[sizeof(small) - 1] == '\0', "colon-path host truncation: NUL terminated");
+        ASSERT_MSG(port == 8080, "colon-path host truncation: port");
+    }
+
+    /* trailing colon + explicit --port equivalent: parse_host_port returns default */
+    rc = parse_host_port("host:", host, sizeof(host), &port);
+    ASSERT_MSG(rc == 0, "trailing colon + flag scenario: rc");
+    ASSERT_MSG(port == USBIP_DEFAULT_PORT, "trailing colon + flag scenario: port is default");
+
     printf("test_parse_host_port PASSED\n");
 }
 

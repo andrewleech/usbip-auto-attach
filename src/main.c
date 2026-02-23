@@ -414,7 +414,7 @@ void parse_args(int argc, char* argv[], Args* args) {
         } else {
             /* Positional argument (host[:port]) */
             if (positional_count == 0) {
-                int parsed_port = USBIP_DEFAULT_PORT;
+                int parsed_port = 0;
                 int rc = parse_host_port(argv[i], args->host_ip, sizeof(args->host_ip), &parsed_port);
                 if (rc == -3) {
                     fprintf(stderr, "Error: Host portion of '%s' is empty.\n", argv[i]);
