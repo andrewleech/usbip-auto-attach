@@ -42,6 +42,7 @@ typedef struct {
     char busid[MAX_PATH_LEN];     /* Bus ID if specified */
     char device[MAX_PATH_LEN];    /* Device ID if specified */
     char usbip_path[MAX_PATH_LEN];
+    int tcp_port;                /* TCP port for usbipd, default USBIP_DEFAULT_PORT */
     int has_busid;               /* 1 if busid is specified */
     int has_device;              /* 1 if device is specified */
     int verbose;                 /* 1 if verbose mode enabled */
@@ -209,15 +210,20 @@ CommandResult run_command(const char** args, int arg_count, int verbose) {
 }
 
 /* Function to attach the device using either busid or device ID */
-int attach_device(const char* host_ip, const char* busid, const char* device, const char* usbip_path, int verbose) {
-    const char* args[7]; /* Max command args */
+int attach_device(const char* host_ip, const char* busid, const char* device, const char* usbip_path, int port, int verbose) {
+    const char* args[9]; /* Max command args (extra slot for --tcp-port=N) */
+    char tcp_port_arg[32];
     int arg_count = 0;
     CommandResult result;
     int is_busid = busid && *busid; /* 1 if busid is specified, 0 if device */
     const char* identifier = is_busid ? busid : device;
-    
+
     /* Prepare command args */
     args[arg_count++] = usbip_path;
+    if (port != USBIP_DEFAULT_PORT) {
+        snprintf(tcp_port_arg, sizeof(tcp_port_arg), "--tcp-port=%d", port);
+        args[arg_count++] = tcp_port_arg;
+    }
     args[arg_count++] = "attach";
     args[arg_count++] = "-r";
     args[arg_count++] = host_ip;
@@ -334,9 +340,12 @@ int find_usbip(const char* user_path, char* found_path, size_t path_size) {
 void parse_args(int argc, char* argv[], Args* args) {
     int i;
     int positional_count = 0;
-    
+    int flag_port = 0;        /* value from --port flag (0 = not provided) */
+    int positional_port = 0;  /* value from host:port syntax (0 = not provided) */
+
     /* Initialize args with defaults */
     memset(args, 0, sizeof(Args));
+    args->tcp_port = USBIP_DEFAULT_PORT;
     
     /* Parse args */
     for (i = 1; i < argc; i++) {
@@ -374,14 +383,61 @@ void parse_args(int argc, char* argv[], Args* args) {
                 args->show_help = 1;
                 return;
             }
+        } else if (strcmp(argv[i], "--port") == 0) {
+            if (i + 1 < argc) {
+                const char* pstr = argv[++i];
+                size_t j;
+                long p;
+                for (j = 0; pstr[j] != '\0'; j++) {
+                    if (!isdigit((unsigned char)pstr[j])) {
+                        fprintf(stderr, "Error: --port requires a numeric argument.\n");
+                        args->show_help = 1;
+                        return;
+                    }
+                }
+                p = strtol(pstr, NULL, 10);
+                if (p < 1 || p > 65535) {
+                    fprintf(stderr, "Error: --port value must be between 1 and 65535.\n");
+                    args->show_help = 1;
+                    return;
+                }
+                flag_port = (int)p;
+            } else {
+                fprintf(stderr, "Error: --port requires an argument.\n");
+                args->show_help = 1;
+                return;
+            }
         } else if (argv[i][0] == '-') {
             fprintf(stderr, "Error: Unknown option %s\n", argv[i]);
             args->show_help = 1;
             return;
         } else {
-            /* Positional argument (host_ip) */
+            /* Positional argument (host[:port]) */
             if (positional_count == 0) {
-                strncpy(args->host_ip, argv[i], sizeof(args->host_ip) - 1);
+                int parsed_port = USBIP_DEFAULT_PORT;
+                int rc = parse_host_port(argv[i], args->host_ip, sizeof(args->host_ip), &parsed_port);
+                if (rc == -3) {
+                    fprintf(stderr, "Error: Host portion of '%s' is empty.\n", argv[i]);
+                    args->show_help = 1;
+                    return;
+                } else if (rc == -2) {
+                    fprintf(stderr, "Error: Port in '%s' is not a valid number.\n", argv[i]);
+                    args->show_help = 1;
+                    return;
+                } else if (rc == -1) {
+                    fprintf(stderr, "Error: Port in '%s' is out of range [1, 65535].\n", argv[i]);
+                    args->show_help = 1;
+                    return;
+                }
+                /* Track explicit port even if it equals the default value.
+                 * Use colon presence (not value) to distinguish "host:3240"
+                 * from plain "host" so conflict detection works correctly. */
+                {
+                    const char* colon_pos = strrchr(argv[i], ':');
+                    if (colon_pos != NULL && colon_pos[1] != '\0') {
+                        positional_port = parsed_port;
+                    }
+                }
                 positional_count++;
             } else {
                 fprintf(stderr, "Error: Unexpected positional argument: %s\n", argv[i]);
@@ -391,10 +447,20 @@ void parse_args(int argc, char* argv[], Args* args) {
         }
     }
     
+    /* Reconcile port from --port flag and host:port syntax */
+    if (flag_port && positional_port && flag_port != positional_port) {
+        fprintf(stderr, "Error: --port %d conflicts with port in host argument (%d).\n",
+                flag_port, positional_port);
+        args->show_help = 1;
+        return;
+    }
+    if (flag_port)            args->tcp_port = flag_port;
+    else if (positional_port) args->tcp_port = positional_port;
+
     /* Validate arguments */
     if (!args->show_help && !args->show_version) {
         if (positional_count != 1) {
-            fprintf(stderr, "Error: Requires exactly one positional argument: <host_ip>\n");
+            fprintf(stderr, "Error: Requires exactly one positional argument: <host[:port]>\n");
             args->show_help = 1;
             return;
         }
@@ -415,11 +481,13 @@ void parse_args(int argc, char* argv[], Args* args) {
 
 /* Print usage information */
 void print_usage(const char* prog_name) {
-    fprintf(stderr, "Usage: %s <host_ip> {-b <busid> | -d <devid>} [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]\n", prog_name);
-    fprintf(stderr, "  <host_ip>           IP address of the remote USBIP host.\n");
+    fprintf(stderr, "Usage: %s <host[:port]> {-b <busid> | -d <devid>} [--port <port>] [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]\n", prog_name);
+    fprintf(stderr, "  <host[:port]>       IP/hostname of the remote USBIP host.\n");
+    fprintf(stderr, "                      Append :<port> to use a non-default port (e.g., 192.168.1.1:63240).\n");
     fprintf(stderr, "  -b, --busid <busid> Bus ID of the USB device to monitor and attach (e.g., 1-2). Mutually exclusive with -d.\n");
     fprintf(stderr, "  -d, --device <devid> Device ID (UDC ID) on the remote host to attach. Mutually exclusive with -b.\n");
     fprintf(stderr, "                      Note: Availability/attachment status checks are less reliable with -d.\n");
+    fprintf(stderr, "  --port <port>       TCP port of the remote usbipd (default: %d).\n", USBIP_DEFAULT_PORT);
     fprintf(stderr, "  --usbip-path <path> (Optional) Full path to the local usbip executable.\n");
     fprintf(stderr, "                      Searches PATH if not provided.\n");
     fprintf(stderr, "  -v, --verbose       Enable detailed logging to stderr.\n");
@@ -474,9 +542,15 @@ int main(int argc, char* argv[]) {
     
     /* Print initial status information */
     if (args.has_busid) {
-        fprintf(stderr, "Monitoring host %s for BUSID: %s\n", args.host_ip, args.busid);
+        if (args.tcp_port != USBIP_DEFAULT_PORT)
+            fprintf(stderr, "Monitoring host %s port %d for BUSID: %s\n", args.host_ip, args.tcp_port, args.busid);
+        else
+            fprintf(stderr, "Monitoring host %s for BUSID: %s\n", args.host_ip, args.busid);
     } else {
-        fprintf(stderr, "Monitoring host %s for Device ID: %s\n", args.host_ip, args.device);
+        if (args.tcp_port != USBIP_DEFAULT_PORT)
+            fprintf(stderr, "Monitoring host %s port %d for Device ID: %s\n", args.host_ip, args.tcp_port, args.device);
+        else
+            fprintf(stderr, "Monitoring host %s for Device ID: %s\n", args.host_ip, args.device);
     }
     
     if (args.verbose) {
@@ -540,8 +614,18 @@ int main(int argc, char* argv[]) {
                     fprintf(stderr, "%s Checking availability for BUSID %s...\n", timestamp, args.busid);
                 }
                 
-                const char* list_args[4] = {usbip_exec_path, "list", "-r", args.host_ip};
-                CommandResult list_result = run_command(list_args, 4, args.verbose);
+                const char* list_args[6];
+                char list_tcp_port_arg[32];
+                int list_arg_count = 0;
+                list_args[list_arg_count++] = usbip_exec_path;
+                if (args.tcp_port != USBIP_DEFAULT_PORT) {
+                    snprintf(list_tcp_port_arg, sizeof(list_tcp_port_arg), "--tcp-port=%d", args.tcp_port);
+                    list_args[list_arg_count++] = list_tcp_port_arg;
+                }
+                list_args[list_arg_count++] = "list";
+                list_args[list_arg_count++] = "-r";
+                list_args[list_arg_count++] = args.host_ip;
+                CommandResult list_result = run_command(list_args, list_arg_count, args.verbose);
                 
                 available = parse_usbip_list(list_result.output, args.busid);
                 free(list_result.output);
@@ -564,9 +648,9 @@ int main(int argc, char* argv[]) {
                     fprintf(stderr, "%s Device %s is available. Attempting to attach...\n", timestamp, identifier);
                 }
                 
-                if (attach_device(args.host_ip, args.has_busid ? args.busid : NULL, 
-                                 args.has_device ? args.device : NULL, 
-                                 usbip_exec_path, args.verbose)) {
+                if (attach_device(args.host_ip, args.has_busid ? args.busid : NULL,
+                                 args.has_device ? args.device : NULL,
+                                 usbip_exec_path, args.tcp_port, args.verbose)) {
                     current_status = STATUS_ATTACH_SUCCESS;
                     fprintf(stderr, "%s Attach command for device %s succeeded.\n", timestamp, identifier);
                 } else {
