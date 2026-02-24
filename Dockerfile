@@ -1,7 +1,6 @@
 # Use a Debian-based image with build tools
 FROM debian:bookworm AS builder
 
-ENV MUSL_VERSION=1.2.3
 ENV MUSL_ARCH_AMD64=x86_64-linux-musl
 ENV MUSL_ARCH_ARM64=aarch64-linux-musl
 ENV CROSS_PREFIX=/opt/cross
@@ -35,17 +34,20 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 RUN pip3 install --break-system-packages git-versioner
 
 # Download and extract MUSL cross-compilers
+# musl.cc is unreliable; use just-containers/musl-cross-make GitHub releases instead.
+# These provide the same x86_64-linux-musl / aarch64-linux-musl toolchain naming.
 RUN mkdir -p ${CROSS_PREFIX} \
     && cd /tmp \
     && WGET_OPTS="--progress=dot:mega -nv" \
+    && MUSL_CROSS_BASE="https://github.com/just-containers/musl-cross-make/releases/download/v15" \
     && echo "Downloading MUSL toolchain for ${MUSL_ARCH_AMD64}..." \
-    && wget ${WGET_OPTS} https://musl.cc/${MUSL_ARCH_AMD64}-cross.tgz \
+    && wget ${WGET_OPTS} ${MUSL_CROSS_BASE}/gcc-9.2.0-${MUSL_ARCH_AMD64}.tar.xz \
     && echo "Downloading MUSL toolchain for ${MUSL_ARCH_ARM64}..." \
-    && wget ${WGET_OPTS} https://musl.cc/${MUSL_ARCH_ARM64}-cross.tgz \
+    && wget ${WGET_OPTS} ${MUSL_CROSS_BASE}/gcc-9.2.0-${MUSL_ARCH_ARM64}.tar.xz \
     && echo "Extracting toolchains..." \
-    && tar -xzf ${MUSL_ARCH_AMD64}-cross.tgz -C ${CROSS_PREFIX} --strip-components=1 \
-    && tar -xzf ${MUSL_ARCH_ARM64}-cross.tgz -C ${CROSS_PREFIX} --strip-components=1 \
-    && rm -f ${MUSL_ARCH_AMD64}-cross.tgz ${MUSL_ARCH_ARM64}-cross.tgz
+    && tar -xJf gcc-9.2.0-${MUSL_ARCH_AMD64}.tar.xz -C ${CROSS_PREFIX} --strip-components=1 \
+    && tar -xJf gcc-9.2.0-${MUSL_ARCH_ARM64}.tar.xz -C ${CROSS_PREFIX} --strip-components=1 \
+    && rm -f gcc-9.2.0-${MUSL_ARCH_AMD64}.tar.xz gcc-9.2.0-${MUSL_ARCH_ARM64}.tar.xz
 
 # Download and extract usbip binary (x64)
 RUN cd /tmp \

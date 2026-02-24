@@ -15,11 +15,13 @@ Download the appropriate binary for your architecture (`usbip-auto-attach-amd64`
 The command-line arguments are as follows:
 
 ```
-Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
-  <host_ip>           IP address of the remote USBIP host.
+Usage: ./usbip-auto-attach <host[:port]> {-b <busid> | -d <devid>} [--port <port>] [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
+  <host[:port]>       IP/hostname of the remote USBIP host.
+                      Append :<port> to use a non-default port (e.g., 192.168.1.1:63240).
   -b, --busid <busid> Bus ID of the USB device to monitor and attach (e.g., 1-2). Mutually exclusive with -d.
   -d, --device <devid> Device ID (UDC ID) on the remote host to attach. Mutually exclusive with -b.
                       Note: Availability/attachment status checks are less reliable with -d.
+  --port <port>       TCP port of the remote usbipd (default: 3240).
   --usbip-path <path> (Optional) Full path to the local usbip executable.
                       Searches PATH if not provided.
   -v, --verbose       Enable detailed logging to stderr.
@@ -27,10 +29,11 @@ Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [--usbip-path <pa
   -h, --help          Show this help message and exit.
 ```
 
-*   `<host_ip>`: IP address of the remote host sharing the USB device.
+*   `<host[:port]>`: IP address or hostname of the remote host sharing the USB device. Optionally append `:<port>` for a non-default port (e.g., `192.168.1.100:63240`).
 *   `-b <busid>` or `-d <devid>`: You must specify *one* of these options to identify the target device.
-    *   `busid`: The bus ID (e.g., `1-2`) is generally preferred as status checking is more reliable. Find this using `usbip list -r <host_ip>` on the local machine *before* the device is attached.
+    *   `busid`: The bus ID (e.g., `1-2`) is generally preferred as status checking is more reliable. Find this using `usbip list -r <host>` on the local machine *before* the device is attached.
     *   `devid`: The device ID (UDC ID) on the remote host (e.g., `foo_udc.0`). Availability checking is less reliable with this option.
+*   `--port <port>`: (Optional) TCP port of the remote `usbipd`. Equivalent to embedding the port in the host argument. Default: `3240`.
 *   `--usbip-path`: (Optional) Specify the full path to the `usbip` executable on the local machine if it's not in the system `PATH`.
 *   `-v`, `--verbose`: Enable detailed logging.
 *   `--version`: Print version information.
@@ -42,6 +45,14 @@ Assuming the pre-compiled amd64 binary is in the current directory, the remote h
 
 ```bash
 ./usbip-auto-attach-amd64 192.168.1.100 -b 1-2 --verbose
+```
+
+To connect on a non-default port (e.g., via an SSH tunnel on port `63240`):
+
+```bash
+./usbip-auto-attach-amd64 192.168.1.100:63240 -b 1-2 --verbose
+# or equivalently:
+./usbip-auto-attach-amd64 192.168.1.100 --port 63240 -b 1-2 --verbose
 ```
 
 This command will continuously check if device `1-2` is attached from host `192.168.1.100`. If it's not attached but is available (listed), it will attempt to attach it using the local `usbip` command.
