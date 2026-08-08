@@ -15,11 +15,12 @@ Download the appropriate binary for your architecture (`usbip-auto-attach-amd64`
 The command-line arguments are as follows:
 
 ```
-Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
+Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [-p|--tcp-port <port>] [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]
   <host_ip>           IP address of the remote USBIP host.
   -b, --busid <busid> Bus ID of the USB device to monitor and attach (e.g., 1-2). Mutually exclusive with -d.
   -d, --device <devid> Device ID (UDC ID) on the remote host to attach. Mutually exclusive with -b.
                       Note: Availability/attachment status checks are less reliable with -d.
+  -p, --tcp-port <port> (Optional) TCP port of the remote USBIP host (default: 3240).
   --usbip-path <path> (Optional) Full path to the local usbip executable.
                       Searches PATH if not provided.
   -v, --verbose       Enable detailed logging to stderr.
@@ -32,6 +33,7 @@ Usage: ./usbip-auto-attach <host_ip> {-b <busid> | -d <devid>} [--usbip-path <pa
     *   `busid`: The bus ID (e.g., `1-2`) is generally preferred as status checking is more reliable. Find this using `usbip list -r <host_ip>` on the local machine *before* the device is attached.
     *   `devid`: The device ID (UDC ID) on the remote host (e.g., `foo_udc.0`). Availability checking is less reliable with this option.
 *   `--usbip-path`: (Optional) Specify the full path to the `usbip` executable on the local machine if it's not in the system `PATH`.
+*   `-p`, `--tcp-port`: (Optional) TCP port of the remote USBIP host (default: 3240).
 *   `-v`, `--verbose`: Enable detailed logging.
 *   `--version`: Print version information.
 *   `-h`, `--help`: Show usage information.

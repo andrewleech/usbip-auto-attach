@@ -42,6 +42,7 @@ typedef struct {
     char busid[MAX_PATH_LEN];     /* Bus ID if specified */
     char device[MAX_PATH_LEN];    /* Device ID if specified */
     char usbip_path[MAX_PATH_LEN];
+    int tcp_port;                 /* TCP port for usbip, default 3240 */
     int has_busid;               /* 1 if busid is specified */
     int has_device;              /* 1 if device is specified */
     int verbose;                 /* 1 if verbose mode enabled */
@@ -209,18 +210,22 @@ CommandResult run_command(const char** args, int arg_count, int verbose) {
 }
 
 /* Function to attach the device using either busid or device ID */
-int attach_device(const char* host_ip, const char* busid, const char* device, const char* usbip_path, int verbose) {
-    const char* args[7]; /* Max command args */
+int attach_device(const char* host_ip, const char* busid, const char* device, const char* usbip_path, int tcp_port, int verbose) {
+    const char* args[9]; /* Max command args */
     int arg_count = 0;
     CommandResult result;
     int is_busid = busid && *busid; /* 1 if busid is specified, 0 if device */
     const char* identifier = is_busid ? busid : device;
+    char port_str[16];
     
     /* Prepare command args */
     args[arg_count++] = usbip_path;
     args[arg_count++] = "attach";
     args[arg_count++] = "-r";
     args[arg_count++] = host_ip;
+    args[arg_count++] = "-p";
+    snprintf(port_str, sizeof(port_str), "%d", tcp_port);
+    args[arg_count++] = port_str;
     
     if (is_busid) {
         args[arg_count++] = "-b";
@@ -337,6 +342,7 @@ void parse_args(int argc, char* argv[], Args* args) {
     
     /* Initialize args with defaults */
     memset(args, 0, sizeof(Args));
+    args->tcp_port = 3240;
     
     /* Parse args */
     for (i = 1; i < argc; i++) {
@@ -347,6 +353,19 @@ void parse_args(int argc, char* argv[], Args* args) {
                 strncpy(args->usbip_path, argv[++i], sizeof(args->usbip_path) - 1);
             } else {
                 fprintf(stderr, "Error: --usbip-path requires an argument.\n");
+                args->show_help = 1;
+                return;
+            }
+        } else if (strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--tcp-port") == 0) {
+            if (i + 1 < argc) {
+                args->tcp_port = atoi(argv[++i]);
+                if (args->tcp_port <= 0 || args->tcp_port > 65535) {
+                    fprintf(stderr, "Error: Port must be between 1 and 65535.\n");
+                    args->show_help = 1;
+                    return;
+                }
+            } else {
+                fprintf(stderr, "Error: --tcp-port requires an argument.\n");
                 args->show_help = 1;
                 return;
             }
@@ -415,11 +434,12 @@ void parse_args(int argc, char* argv[], Args* args) {
 
 /* Print usage information */
 void print_usage(const char* prog_name) {
-    fprintf(stderr, "Usage: %s <host_ip> {-b <busid> | -d <devid>} [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]\n", prog_name);
+    fprintf(stderr, "Usage: %s <host_ip> {-b <busid> | -d <devid>} [-p|--tcp-port <port>] [--usbip-path <path>] [-v|--verbose] [--version] [-h|--help]\n", prog_name);
     fprintf(stderr, "  <host_ip>           IP address of the remote USBIP host.\n");
     fprintf(stderr, "  -b, --busid <busid> Bus ID of the USB device to monitor and attach (e.g., 1-2). Mutually exclusive with -d.\n");
     fprintf(stderr, "  -d, --device <devid> Device ID (UDC ID) on the remote host to attach. Mutually exclusive with -b.\n");
     fprintf(stderr, "                      Note: Availability/attachment status checks are less reliable with -d.\n");
+    fprintf(stderr, "  -p, --tcp-port <port> (Optional) TCP port of the remote USBIP host (default: 3240).\n");
     fprintf(stderr, "  --usbip-path <path> (Optional) Full path to the local usbip executable.\n");
     fprintf(stderr, "                      Searches PATH if not provided.\n");
     fprintf(stderr, "  -v, --verbose       Enable detailed logging to stderr.\n");
@@ -564,9 +584,9 @@ int main(int argc, char* argv[]) {
                     fprintf(stderr, "%s Device %s is available. Attempting to attach...\n", timestamp, identifier);
                 }
                 
-                if (attach_device(args.host_ip, args.has_busid ? args.busid : NULL, 
+                if (attach_device(args.host_ip, args.has_busid ? args.busid : NULL,
                                  args.has_device ? args.device : NULL, 
-                                 usbip_exec_path, args.verbose)) {
+                                 usbip_exec_path, args.tcp_port, args.verbose)) {
                     current_status = STATUS_ATTACH_SUCCESS;
                     fprintf(stderr, "%s Attach command for device %s succeeded.\n", timestamp, identifier);
                 } else {
